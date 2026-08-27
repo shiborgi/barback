@@ -22,6 +22,31 @@ container run --rm \
 
 Inside a container, configure the server hosts as `0.0.0.0`. Point `VALKEY_URL` at a reachable Valkey address rather than container loopback.
 
+## Local Valkey
+
+Start Valkey with Apple Container for local integration tests:
+
+```sh
+./scripts/start-valkey.sh
+VALKEY_URL=redis://127.0.0.1:6379 bun run test:integration
+```
+
+The script uses the `gatepatrol-valkey` container and `gatepatrol-valkey-data` volume by default. Stop and remove the container with:
+
+```sh
+container stop gatepatrol-valkey
+container delete gatepatrol-valkey
+```
+
+If `container exec gatepatrol-valkey valkey-cli ping` returns `PONG` but the host gets `ECONNRESET`, grant Local Network access to `container-runtime-linux` in System Settings > Privacy & Security > Local Network. On macOS versions where the runtime is not listed, allow the default container subnet and reboot:
+
+```sh
+sudo defaults write com.apple.network.local-network AllowedEthernetLocalNetworkAddresses -array "192.168.64.0/24"
+sudo defaults write com.apple.network.local-network AllowedWiFiLocalNetworkAddresses -array "192.168.64.0/24"
+```
+
+After rebooting, restart Apple Container and run `./scripts/start-valkey.sh` again.
+
 ## Reload And Shutdown
 
 Send `SIGHUP` or call the admin reload endpoint after changing YAML. Invalid replacements are rejected without changing the active runtime. `SIGINT` and `SIGTERM` stop both listeners and close runtime and telemetry resources.
