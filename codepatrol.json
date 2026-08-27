@@ -47,6 +47,26 @@
       "readiness": {
         "facets": ["changes", "tests", "relations"],
         "maxOutputBytes": 9600
+      },
+      "orientation-wide": {
+        "facets": ["structure", "symbols", "relations"],
+        "maxOutputBytes": 19200
+      },
+      "orientation-grounded": {
+        "facets": ["structure", "symbols", "relations", "source"],
+        "maxOutputBytes": 19200
+      },
+      "implementation-deep": {
+        "facets": ["symbols", "relations", "source", "tests"],
+        "maxOutputBytes": 24000
+      },
+      "impact-wide": {
+        "facets": ["changes", "symbols", "relations", "tests"],
+        "maxOutputBytes": 24000
+      },
+      "impact-grounded": {
+        "facets": ["changes", "symbols", "relations", "source", "tests"],
+        "maxOutputBytes": 24000
       }
     },
     "defaults": {
