@@ -1,5 +1,5 @@
 import { parseDuration } from "../config/duration.ts";
-import type { GatepatrolConfig } from "../config/schema.ts";
+import type { BarbackConfig } from "../config/schema.ts";
 import { GatewayError } from "../core/errors.ts";
 import type { OperationalStore } from "../storage/valkey.ts";
 
@@ -92,7 +92,7 @@ return cjson.encode(totals)
 `;
 
 function scopeMatches(
-  window: GatepatrolConfig["usageWindows"][number],
+  window: BarbackConfig["usageWindows"][number],
   client: string,
   provider: string,
   model: string,
@@ -109,7 +109,7 @@ function durationMs(value: string): number {
   return parseDuration(value);
 }
 
-function bounds(window: GatepatrolConfig["usageWindows"][number], now: number) {
+function bounds(window: BarbackConfig["usageWindows"][number], now: number) {
   if (window.type === "rolling") return { start: now - durationMs(window.duration), end: now };
   if (window.timezone !== "UTC") {
     throw new Error("Calendar windows currently require UTC");
@@ -133,11 +133,11 @@ export class WindowTracker {
   constructor(
     private readonly store: OperationalStore,
     private readonly prefix: string,
-    private readonly windows: GatepatrolConfig["usageWindows"],
+    private readonly windows: BarbackConfig["usageWindows"],
   ) {}
 
   #scopeKey(
-    window: GatepatrolConfig["usageWindows"][number],
+    window: BarbackConfig["usageWindows"][number],
     client: string,
     provider: string,
     model: string,
@@ -149,7 +149,7 @@ export class WindowTracker {
     ].join(":");
   }
 
-  #keys(window: GatepatrolConfig["usageWindows"][number], scopeKey: string) {
+  #keys(window: BarbackConfig["usageWindows"][number], scopeKey: string) {
     return [
       `${this.prefix}:usage:window:${window.id}:${scopeKey}`,
       `${this.prefix}:usage:index:${window.id}:${scopeKey}`,

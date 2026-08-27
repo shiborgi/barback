@@ -2,14 +2,32 @@
   "schemaVersion": 1,
   "baseBranch": "main",
   "verification": {
-    "argv": ["true"],
-    "timeoutMs": 180000
+    "argv": ["bun", "--no-env-file", "run", "check"],
+    "timeoutMs": 180000,
+    "sharedPaths": ["node_modules"]
   },
   "maxReviewReturns": 3,
   "agentCatalog": {
-    "argv": ["agentpatrol", "resolve", "--json"],
+    "argv": [
+      "node",
+      "/Users/server/Development/shiborgi/agentpatrol/bin/agentpatrol.js",
+      "resolve",
+      "--json"
+    ],
     "timeoutMs": 10000,
     "defaults": {
+      "spec": {
+        "agent": "agentpatrol/architect",
+        "version": "1.0.0"
+      },
+      "plan": {
+        "agent": "agentpatrol/tech-lead",
+        "version": "1.0.0"
+      },
+      "build": {
+        "agent": "agentpatrol/developer",
+        "version": "1.0.0"
+      },
       "spec-review": {
         "agent": "agentpatrol/chief-architect",
         "version": "1.0.0"
@@ -29,7 +47,13 @@
     }
   },
   "contextPatrol": {
-    "argv": ["contextpatrol", "query", "--input", "-"],
+    "argv": [
+      "node",
+      "/Users/server/Development/shiborgi/contextpatrol/bin/contextpatrol.js",
+      "query",
+      "--input",
+      "-"
+    ],
     "timeoutMs": 60000,
     "profiles": {
       "orientation": {
@@ -82,7 +106,7 @@
   "remote": {
     "github": {
       "enabled": true,
-      "repo": "shiborgi/gatepatrol",
+      "repo": "shiborgi/barback",
       "gitRemote": "origin",
       "tokenEnv": "GITHUB_TOKEN",
       "wiki": true,

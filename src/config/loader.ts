@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { parse } from "yaml";
-import { configSchema, type GatepatrolConfig, isEnvReference } from "./schema.ts";
+import { type BarbackConfig, configSchema, isEnvReference } from "./schema.ts";
 
 export class ConfigError extends Error {
   override name = "ConfigError";
@@ -27,9 +27,9 @@ function resolveEnvironment(value: unknown, env: Record<string, string | undefin
 }
 
 export async function loadConfig(
-  path = process.env.GATEPATROL_CONFIG ?? "gatepatrol.yaml",
+  path = process.env.BARBACK_CONFIG ?? "barback.yaml",
   env: Record<string, string | undefined> = process.env,
-): Promise<GatepatrolConfig> {
+): Promise<BarbackConfig> {
   let source: string;
   try {
     source = await readFile(path, "utf8");
@@ -56,23 +56,23 @@ export async function loadConfig(
 }
 
 export class ConfigStore {
-  #current: GatepatrolConfig;
+  #current: BarbackConfig;
   readonly path: string;
 
-  constructor(config: GatepatrolConfig, path = process.env.GATEPATROL_CONFIG ?? "gatepatrol.yaml") {
+  constructor(config: BarbackConfig, path = process.env.BARBACK_CONFIG ?? "barback.yaml") {
     this.#current = config;
     this.path = path;
   }
 
-  get(): GatepatrolConfig {
+  get(): BarbackConfig {
     return this.#current;
   }
 
-  replace(next: GatepatrolConfig): void {
+  replace(next: BarbackConfig): void {
     this.#current = next;
   }
 
-  async reload(): Promise<GatepatrolConfig> {
+  async reload(): Promise<BarbackConfig> {
     const next = await loadConfig(this.path);
     this.#current = next;
     return next;

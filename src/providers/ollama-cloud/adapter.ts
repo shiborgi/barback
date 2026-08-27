@@ -1,4 +1,4 @@
-import type { GatepatrolConfig } from "../../config/schema.ts";
+import type { BarbackConfig } from "../../config/schema.ts";
 import { GatewayError } from "../../core/errors.ts";
 import type { RequestContext } from "../../core/request-context.ts";
 import { CircuitBreaker } from "../../limits/circuit-breaker.ts";
@@ -13,7 +13,7 @@ import type {
 import { toOllamaRequest } from "./mapper.ts";
 import { parseNdjson } from "./stream.ts";
 
-type ProviderConfig = GatepatrolConfig["providers"][string];
+type ProviderConfig = BarbackConfig["providers"][string];
 type Fetch = typeof fetch;
 
 function usage(value: Record<string, unknown>): TokenUsage {

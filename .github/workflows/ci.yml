@@ -33,4 +33,4 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - run: docker build --tag gatepatrol:test .
+      - run: docker build --tag barback:test .

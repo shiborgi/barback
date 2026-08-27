@@ -143,7 +143,7 @@ export const configSchema = z
     storage: z.object({
       valkey: z.object({
         url: z.string().min(1),
-        keyPrefix: z.string().default("gatepatrol"),
+        keyPrefix: z.string().default("barback"),
         connectTimeout: duration.default(5_000),
         vectorSearch: z.boolean().default(false),
       }),
@@ -199,7 +199,7 @@ export const configSchema = z
       argumentLimit: bytes.default(1024 * 1024),
     }),
     telemetry: z.object({
-      serviceName: z.string().default("gatepatrol"),
+      serviceName: z.string().default("barback"),
       prometheus: z.object({
         enabled: z.boolean().default(true),
         path: z.literal("/metrics").default("/metrics"),
@@ -393,10 +393,10 @@ export const configSchema = z
     }
   });
 
-export type GatepatrolConfig = z.infer<typeof configSchema>;
-export type ClientConfig = GatepatrolConfig["auth"]["clients"][number];
-export type PolicyConfig = GatepatrolConfig["policies"][string];
-export type ModelConfig = GatepatrolConfig["models"][string];
+export type BarbackConfig = z.infer<typeof configSchema>;
+export type ClientConfig = BarbackConfig["auth"]["clients"][number];
+export type PolicyConfig = BarbackConfig["policies"][string];
+export type ModelConfig = BarbackConfig["models"][string];
 
 export function isEnvReference(value: unknown): value is string {
   return typeof value === "string" && value.startsWith("env:") && value.length > 4;

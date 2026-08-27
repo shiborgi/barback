@@ -11,16 +11,38 @@ Keep both listeners bound to loopback unless an authenticated, TLS-terminating r
 The Dockerfile is OCI-compatible and works with Apple Container:
 
 ```sh
-container build --tag gatepatrol:local .
+container build --tag barback:local .
 container run --rm \
   --publish 127.0.0.1:8080:8080 \
   --publish 127.0.0.1:8081:8081 \
   --env-file .env \
-  --volume "$PWD/gatepatrol.yaml:/app/gatepatrol.yaml:ro" \
-  gatepatrol:local
+  --volume "$PWD/barback.yaml:/app/barback.yaml:ro" \
+  barback:local
 ```
 
 Inside a container, configure the server hosts as `0.0.0.0`. Point `VALKEY_URL` at a reachable Valkey address rather than container loopback.
+
+To run the gateway and Valkey together on Apple Container's `default` network:
+
+```sh
+container system start
+cp config/barback.example.yaml barback.yaml
+cp .env.example .env
+# Edit .env and set the Ollama API key and model names.
+./scripts/start-barback.sh
+```
+
+The stack script builds `barback:local`, starts `barback-valkey` without exposing Redis to the host, discovers its internal IP, and starts `barback-gateway` with `VALKEY_URL=redis://<valkey-ip>:6379`. Override `BARBACK_CONTAINER_NETWORK` to use another Apple Container network.
+
+The default `valkey/valkey:8-alpine` image does not include Valkey Search. For a basic installation, set `storage.valkey.vectorSearch: false` and `cache.semantic.enabled: false` in `barback.yaml`.
+
+If `container build` reports that Rosetta is not installed, set `rosetta = false` under `[build]` in `~/.config/container/config.toml`, restart Apple Container, and run the stack script again.
+
+Stop the stack with:
+
+```sh
+container stop barback-gateway barback-valkey
+```
 
 ## Local Valkey
 
@@ -31,14 +53,14 @@ Start Valkey with Apple Container for local integration tests:
 VALKEY_URL=redis://127.0.0.1:6379 bun run test:integration
 ```
 
-The script uses the `gatepatrol-valkey` container and `gatepatrol-valkey-data` volume by default. Stop and remove the container with:
+The script uses the `barback-valkey` container and `barback-valkey-data` volume by default. Stop and remove the container with:
 
 ```sh
-container stop gatepatrol-valkey
-container delete gatepatrol-valkey
+container stop barback-valkey
+container delete barback-valkey
 ```
 
-If `container exec gatepatrol-valkey valkey-cli ping` returns `PONG` but the host gets `ECONNRESET`, grant Local Network access to `container-runtime-linux` in System Settings > Privacy & Security > Local Network. On macOS versions where the runtime is not listed, allow the default container subnet and reboot:
+If `container exec barback-valkey valkey-cli ping` returns `PONG` but the host gets `ECONNRESET`, grant Local Network access to `container-runtime-linux` in System Settings > Privacy & Security > Local Network. On macOS versions where the runtime is not listed, allow the default container subnet and reboot:
 
 ```sh
 sudo defaults write com.apple.network.local-network AllowedEthernetLocalNetworkAddresses -array "192.168.64.0/24"

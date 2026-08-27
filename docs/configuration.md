@@ -1,6 +1,6 @@
 # Configuration
 
-Set `GATEPATROL_CONFIG` to choose a YAML file; the default is `gatepatrol.yaml`. Start from `config/gatepatrol.example.yaml`.
+Set `BARBACK_CONFIG` to choose a YAML file; the default is `barback.yaml`. Start from `config/barback.example.yaml`.
 
 Any scalar string can reference an environment variable with `env:NAME`. Missing variables fail startup or reload. Keep credentials out of YAML and source control.
 
@@ -22,13 +22,13 @@ The policy establishes the maximum cache mode. Requests may narrow behavior with
 
 | Header | Meaning |
 | --- | --- |
-| `x-gatepatrol-cache-mode` | `none`, `exact`, `semantic`, or `shadow` |
-| `x-gatepatrol-cache-namespace` | Isolated namespace of up to 128 safe characters |
-| `x-gatepatrol-cache-ttl` | TTL such as `30s`, capped by configuration |
-| `x-gatepatrol-cache-no-store` | Do not store this response when `true` |
-| `x-gatepatrol-cache-refresh` | Skip lookup and refresh the entry when `true` |
+| `x-barback-cache-mode` | `none`, `exact`, `semantic`, or `shadow` |
+| `x-barback-cache-namespace` | Isolated namespace of up to 128 safe characters |
+| `x-barback-cache-ttl` | TTL such as `30s`, capped by configuration |
+| `x-barback-cache-no-store` | Do not store this response when `true` |
+| `x-barback-cache-refresh` | Skip lookup and refresh the entry when `true` |
 
-Responses report cache status, context utilization, usage-window status, and request ID with `x-gatepatrol-*` headers.
+Responses report cache status, context utilization, usage-window status, and request ID with `x-barback-*` headers.
 
 ## Usage Windows
 

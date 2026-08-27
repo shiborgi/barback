@@ -2,7 +2,7 @@ import { cachedEvents, openAiResponse, streamChunk } from "../api/openai.ts";
 import { exactCacheId, semanticPartition, sha256 } from "../cache/cache-key.ts";
 import { stableJson } from "../cache/canonicalize.ts";
 import { parseDuration } from "../config/duration.ts";
-import type { GatepatrolConfig } from "../config/schema.ts";
+import type { BarbackConfig } from "../config/schema.ts";
 import type {
   GatewayChatRequest,
   GatewayChatResponse,
@@ -28,7 +28,7 @@ export interface ChatOptions {
 type CacheStatus = "bypass" | "miss" | "hit" | "shadow-hit";
 
 function selectedCacheMode(
-  policy: GatepatrolConfig["policies"][string],
+  policy: BarbackConfig["policies"][string],
   requested: string | undefined,
 ): "none" | "exact" | "semantic" | "shadow" {
   const allowed = policy.cache;
@@ -94,12 +94,12 @@ function responseHeaders(
   cacheId?: string,
 ) {
   return {
-    "x-gatepatrol-request-id": ctx.requestId,
-    "x-gatepatrol-cache-status": status,
-    "x-gatepatrol-cache-type": type,
-    ...(cacheId ? { "x-gatepatrol-cache-id": cacheId } : {}),
-    "x-gatepatrol-context-utilization": pressure.predictedUtilization.toFixed(4),
-    "x-gatepatrol-window-status": pressure.status === "ok" ? "ok" : "warning",
+    "x-barback-request-id": ctx.requestId,
+    "x-barback-cache-status": status,
+    "x-barback-cache-type": type,
+    ...(cacheId ? { "x-barback-cache-id": cacheId } : {}),
+    "x-barback-context-utilization": pressure.predictedUtilization.toFixed(4),
+    "x-barback-window-status": pressure.status === "ok" ? "ok" : "warning",
   };
 }
 
@@ -479,7 +479,7 @@ export async function executeChat(
       pressure,
       mode === "none" ? undefined : id,
     );
-    headers["x-gatepatrol-window-status"] = windowStatus;
+    headers["x-barback-window-status"] = windowStatus;
     if (request.stream) {
       return streamResponse(
         upstream as AsyncIterable<GatewayStreamEvent>,

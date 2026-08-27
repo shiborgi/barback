@@ -1,6 +1,6 @@
 # Architecture
 
-Gatepatrol keeps one request pipeline and explicit boundaries around external systems.
+Barback keeps one request pipeline and explicit boundaries around external systems.
 
 1. Hono accepts the OpenAI-compatible or MCP request and assigns a request ID.
 2. Bearer authentication resolves a client and its scopes and policy.
@@ -10,7 +10,7 @@ Gatepatrol keeps one request pipeline and explicit boundaries around external sy
 6. The Ollama adapter performs timeout, retry, and circuit-breaker handling and normalizes native responses.
 7. Provider and served usage are reconciled separately, then metrics and versioned usage events are recorded.
 
-Valkey stores exact entries, locks, usage windows, usage events, and MCP read-cache entries. Valkey Search stores semantic vectors. A process-local L1 fronts exact entries without changing their canonical identity.
+Valkey stores exact entries, locks, usage windows, usage events, and MCP read-cache entries. Valkey Search stores semantic vectors.
 
 ## Cache Safety
 

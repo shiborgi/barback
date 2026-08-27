@@ -2,23 +2,23 @@ version: 1
 environment: local
 
 server:
-  host: 127.0.0.1
+  host: env:BARBACK_SERVER_HOST
   port: 8080
   requestBodyLimit: 10mb
   gracefulShutdown: 30s
   allowedOrigins: []
   admin:
-    host: 127.0.0.1
+    host: env:BARBACK_ADMIN_HOST
     port: 8081
 
 auth:
   clients:
     - id: default
-      key: env:GATEPATROL_CLIENT_KEY
+      key: env:BARBACK_CLIENT_KEY
       policy: standard
       scopes: [llm:invoke, llm:models, mcp:list, mcp:call]
     - id: operator
-      key: env:GATEPATROL_ADMIN_KEY
+      key: env:BARBACK_ADMIN_KEY
       policy: standard
       scopes: [admin]
 
@@ -47,7 +47,7 @@ models:
 storage:
   valkey:
     url: env:VALKEY_URL
-    keyPrefix: gatepatrol
+    keyPrefix: barback
     connectTimeout: 5s
     vectorSearch: true
 
@@ -95,7 +95,7 @@ mcp:
   argumentLimit: 1mb
 
 telemetry:
-  serviceName: gatepatrol
+  serviceName: barback
   prometheus:
     enabled: true
     path: /metrics

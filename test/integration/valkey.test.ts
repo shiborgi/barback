@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { ExactCache } from "../../src/cache/exact-cache.ts";
-import type { GatepatrolConfig } from "../../src/config/schema.ts";
+import type { BarbackConfig } from "../../src/config/schema.ts";
 import { ValkeyStore } from "../../src/storage/valkey.ts";
 import { WindowTracker } from "../../src/usage/window-tracker.ts";
 import { testConfig } from "../fixtures/config.ts";
@@ -8,7 +8,7 @@ import { testConfig } from "../fixtures/config.ts";
 const url = process.env.VALKEY_URL;
 
 describe.skipIf(!url)("Valkey integration", () => {
-  const prefix = `gatepatrol:test:${crypto.randomUUID()}`;
+  const prefix = `barback:test:${crypto.randomUUID()}`;
   const valkeyConfig = { ...testConfig().storage.valkey, url: url ?? "" };
   const store = new ValkeyStore(valkeyConfig);
 
@@ -35,7 +35,7 @@ describe.skipIf(!url)("Valkey integration", () => {
   });
 
   test("reserves usage atomically and idempotently", async () => {
-    const windows: GatepatrolConfig["usageWindows"] = [
+    const windows: BarbackConfig["usageWindows"] = [
       {
         id: "requests",
         type: "rolling",

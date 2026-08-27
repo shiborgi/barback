@@ -1,8 +1,8 @@
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { NodeSDK } from "@opentelemetry/sdk-node";
-import type { GatepatrolConfig } from "../config/schema.ts";
+import type { BarbackConfig } from "../config/schema.ts";
 
-export async function startTelemetry(config: GatepatrolConfig["telemetry"]) {
+export async function startTelemetry(config: BarbackConfig["telemetry"]) {
   if (!config.otel.enabled || !config.otel.endpoint) return undefined;
   const sdk = new NodeSDK({
     serviceName: config.serviceName,

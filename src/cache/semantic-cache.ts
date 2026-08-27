@@ -1,4 +1,4 @@
-import type { GatepatrolConfig } from "../config/schema.ts";
+import type { BarbackConfig } from "../config/schema.ts";
 import type { GatewayChatResponse } from "../providers/provider.ts";
 import type { OperationalStore } from "../storage/valkey.ts";
 
@@ -19,7 +19,7 @@ export class SemanticCache {
     private readonly store: OperationalStore,
     private readonly prefix: string,
     private readonly dimensions: number,
-    private readonly config: GatepatrolConfig["cache"]["semantic"],
+    private readonly config: BarbackConfig["cache"]["semantic"],
   ) {
     this.index = `${prefix}-semantic-v1`;
   }

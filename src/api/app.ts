@@ -63,7 +63,7 @@ export function createApp(runtime: Runtime) {
   app.use("*", async (c, next) => {
     c.set("requestId", requestId(c.req.raw));
     await next();
-    c.header("x-gatepatrol-request-id", c.get("requestId"));
+    c.header("x-barback-request-id", c.get("requestId"));
   });
   app.onError((caught, c) => {
     const error = normalizeError(caught);
@@ -120,7 +120,7 @@ export function createApp(runtime: Runtime) {
         ([id, model]) =>
           model.capability === "chat" && (!policy?.models.length || policy.models.includes(id)),
       )
-      .map(([id]) => ({ id, object: "model", created: 0, owned_by: "gatepatrol" }));
+      .map(([id]) => ({ id, object: "model", created: 0, owned_by: "barback" }));
     return c.json({ object: "list", data: models });
   });
 
@@ -131,11 +131,11 @@ export function createApp(runtime: Runtime) {
     c.set("requestContext", ctx);
     const request = parseChatRequest(await c.req.json());
     const response = await executeChat(request, ctx, runtime, {
-      cacheMode: c.req.header("x-gatepatrol-cache-mode"),
-      namespace: c.req.header("x-gatepatrol-cache-namespace"),
-      cacheTtl: c.req.header("x-gatepatrol-cache-ttl"),
-      noStore: c.req.header("x-gatepatrol-cache-no-store") === "true",
-      refresh: c.req.header("x-gatepatrol-cache-refresh") === "true",
+      cacheMode: c.req.header("x-barback-cache-mode"),
+      namespace: c.req.header("x-barback-cache-namespace"),
+      cacheTtl: c.req.header("x-barback-cache-ttl"),
+      noStore: c.req.header("x-barback-cache-no-store") === "true",
+      refresh: c.req.header("x-barback-cache-refresh") === "true",
     });
     return response;
   });

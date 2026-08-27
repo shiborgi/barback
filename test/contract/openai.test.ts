@@ -28,7 +28,7 @@ describe("OpenAI-compatible API", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       object: "list",
-      data: [{ id: "chat", object: "model", created: 0, owned_by: "gatepatrol" }],
+      data: [{ id: "chat", object: "model", created: 0, owned_by: "barback" }],
     });
   });
 

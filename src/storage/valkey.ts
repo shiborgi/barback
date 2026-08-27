@@ -1,5 +1,5 @@
 import Redis from "ioredis";
-import type { GatepatrolConfig } from "../config/schema.ts";
+import type { BarbackConfig } from "../config/schema.ts";
 
 export interface OperationalStore {
   get(key: string): Promise<string | null>;
@@ -17,7 +17,7 @@ export interface OperationalStore {
 export class ValkeyStore implements OperationalStore {
   readonly client: Redis;
 
-  constructor(readonly config: GatepatrolConfig["storage"]["valkey"]) {
+  constructor(readonly config: BarbackConfig["storage"]["valkey"]) {
     this.client = new Redis(config.url, {
       connectTimeout: config.connectTimeout,
       lazyConnect: true,

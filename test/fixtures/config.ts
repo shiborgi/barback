@@ -1,4 +1,4 @@
-import { configSchema, type GatepatrolConfig } from "../../src/config/schema.ts";
+import { type BarbackConfig, configSchema } from "../../src/config/schema.ts";
 
 export function testConfigInput() {
   return {
@@ -85,7 +85,7 @@ export function testConfigInput() {
       argumentLimit: "1mb",
     },
     telemetry: {
-      serviceName: "gatepatrol-test",
+      serviceName: "barback-test",
       prometheus: { enabled: true, path: "/metrics" },
       otel: { enabled: false },
       logging: { level: "error", captureContent: false, captureHeaders: false },
@@ -93,6 +93,6 @@ export function testConfigInput() {
   };
 }
 
-export function testConfig(): GatepatrolConfig {
+export function testConfig(): BarbackConfig {
   return configSchema.parse(testConfigInput());
 }

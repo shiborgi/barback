@@ -3,11 +3,11 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import type { GatepatrolConfig, PolicyConfig } from "../config/schema.ts";
+import type { BarbackConfig, PolicyConfig } from "../config/schema.ts";
 import { GatewayError } from "../core/errors.ts";
 import type { Logger } from "../telemetry/logger.ts";
 
-type McpConfig = GatepatrolConfig["mcp"];
+type McpConfig = BarbackConfig["mcp"];
 type ServerConfig = McpConfig["servers"][number];
 
 interface ConnectedServer {
@@ -40,7 +40,7 @@ export class McpRegistry {
   async connect(): Promise<void> {
     await Promise.all(
       this.config.servers.map(async (server) => {
-        const client = new Client({ name: "gatepatrol", version: "0.1.0" }, { capabilities: {} });
+        const client = new Client({ name: "barback", version: "0.1.0" }, { capabilities: {} });
         try {
           const headers = server.auth
             ? { authorization: `Bearer ${server.auth.bearerToken}` }

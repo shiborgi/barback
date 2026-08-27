@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Report vulnerabilities privately through GitHub's security advisory feature for `shiborgi/gatepatrol`. Do not open a public issue with credentials, prompts, or exploit details.
+Report vulnerabilities privately through GitHub's security advisory feature for `shiborgi/barback`. Do not open a public issue with credentials, prompts, or exploit details.
 
 ## Deployment Baseline
 
@@ -13,4 +13,4 @@ Report vulnerabilities privately through GitHub's security advisory feature for 
 - Leave content/header logging and semantic serving disabled unless their risks are understood.
 - Restrict MCP tools to the minimum allowlist and accurately classify side effects.
 
-Gatepatrol redacts common credential fields, but operators remain responsible for log destinations, environment security, upstream trust, and retention policies.
+Barback redacts common credential fields, but operators remain responsible for log destinations, environment security, upstream trust, and retention policies.

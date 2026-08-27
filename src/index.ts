@@ -3,7 +3,7 @@ import { ConfigStore, loadConfig } from "./config/loader.ts";
 import { Runtime } from "./core/runtime.ts";
 import { startTelemetry } from "./telemetry/otel.ts";
 
-const path = process.env.GATEPATROL_CONFIG ?? "gatepatrol.yaml";
+const path = process.env.BARBACK_CONFIG ?? "barback.yaml";
 const configStore = new ConfigStore(await loadConfig(path), path);
 const runtime = await Runtime.create(configStore);
 const telemetry = await startTelemetry(configStore.get().telemetry);

@@ -1,4 +1,4 @@
-import type { GatepatrolConfig, ModelConfig, PolicyConfig } from "../config/schema.ts";
+import type { BarbackConfig, ModelConfig, PolicyConfig } from "../config/schema.ts";
 import { GatewayError } from "../core/errors.ts";
 import type { GatewayChatRequest } from "../providers/provider.ts";
 import { estimateInputTokens } from "./tokenizer.ts";
@@ -14,7 +14,7 @@ export function checkContextWindow(
   request: GatewayChatRequest,
   model: ModelConfig,
   policy: PolicyConfig,
-  thresholds: GatepatrolConfig["contextWindow"],
+  thresholds: BarbackConfig["contextWindow"],
 ): ContextPressure {
   if (!model.contextWindow || !model.maxOutput) {
     throw new GatewayError(

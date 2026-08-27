@@ -1,4 +1,4 @@
-import type { GatepatrolConfig } from "../config/schema.ts";
+import type { BarbackConfig } from "../config/schema.ts";
 import { GatewayError } from "../core/errors.ts";
 import type { RequestContext } from "../core/request-context.ts";
 import type { Metrics } from "../telemetry/metrics.ts";
@@ -26,7 +26,7 @@ export class McpGateway {
     private readonly cache: McpToolCache,
     private readonly metrics: Metrics,
     private readonly argumentLimit: number,
-    private readonly protocol: GatepatrolConfig["mcp"]["protocol"],
+    private readonly protocol: BarbackConfig["mcp"]["protocol"],
   ) {}
 
   async handle(request: Request, ctx: RequestContext): Promise<Response> {
@@ -74,7 +74,7 @@ export class McpGateway {
           result(body.id, {
             protocolVersion: supported.includes(requested) ? requested : this.protocol.primary,
             capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: "gatepatrol", version: "0.1.0" },
+            serverInfo: { name: "barback", version: "0.1.0" },
           }),
         );
       }

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import type { ClientConfig, GatepatrolConfig } from "../config/schema.ts";
+import type { BarbackConfig, ClientConfig } from "../config/schema.ts";
 
 function equals(left: string, right: string): boolean {
   const a = Buffer.from(left);
@@ -9,7 +9,7 @@ function equals(left: string, right: string): boolean {
 
 export function authenticate(
   header: string | undefined,
-  config: GatepatrolConfig,
+  config: BarbackConfig,
 ): ClientConfig | undefined {
   if (!header?.startsWith("Bearer ")) return undefined;
   const key = header.slice(7);

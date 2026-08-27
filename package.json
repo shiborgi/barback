@@ -1,16 +1,16 @@
 {
-  "name": "gatepatrol",
+  "name": "barback",
   "version": "0.1.0",
   "description": "Local policy gateway for LLM and MCP traffic.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shiborgi/gatepatrol.git"
+    "url": "git+https://github.com/shiborgi/barback.git"
   },
-  "homepage": "https://github.com/shiborgi/gatepatrol#readme",
+  "homepage": "https://github.com/shiborgi/barback#readme",
   "bugs": {
-    "url": "https://github.com/shiborgi/gatepatrol/issues"
+    "url": "https://github.com/shiborgi/barback/issues"
   },
   "engines": {
     "bun": "1.4.0"
@@ -25,8 +25,8 @@
     "test:unit": "bun test test/unit test/property",
     "test:contract": "bun test test/contract",
     "test:integration": "bun test test/integration",
-    "test:live": "GATEPATROL_LIVE_TESTS=true bun test test/live",
-    "check": "bun run typecheck && bun run lint && bun test"
+    "test:live": "BARBACK_LIVE_TESTS=true bun test test/live",
+    "check": "bun --no-env-file run typecheck && bun --no-env-file run lint && bun --no-env-file test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
