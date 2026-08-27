@@ -1,0 +1,107 @@
+version: 1
+environment: local
+
+server:
+  host: 127.0.0.1
+  port: 8080
+  requestBodyLimit: 10mb
+  gracefulShutdown: 30s
+  allowedOrigins: []
+  admin:
+    host: 127.0.0.1
+    port: 8081
+
+auth:
+  clients:
+    - id: default
+      key: env:GATEPATROL_CLIENT_KEY
+      policy: standard
+      scopes: [llm:invoke, llm:models, mcp:list, mcp:call]
+    - id: operator
+      key: env:GATEPATROL_ADMIN_KEY
+      policy: standard
+      scopes: [admin]
+
+providers:
+  ollama-cloud:
+    type: ollama
+    baseUrl: https://ollama.com
+    apiKey: env:OLLAMA_API_KEY
+    timeout: 120s
+    connectTimeout: 10s
+
+models:
+  code-default:
+    provider: ollama-cloud
+    upstreamModel: env:OLLAMA_CODE_MODEL
+    capability: chat
+    contextWindow: 131072
+    maxOutput: 16384
+    tokenizer: approximate
+  cache-embedding:
+    provider: ollama-cloud
+    upstreamModel: env:OLLAMA_EMBEDDING_MODEL
+    capability: embedding
+    dimensions: 1024
+
+storage:
+  valkey:
+    url: env:VALKEY_URL
+    keyPrefix: gatepatrol
+    connectTimeout: 5s
+    vectorSearch: true
+
+cache:
+  defaultMode: none
+  maxResponseBytes: 2097152
+  exact:
+    enabled: true
+    defaultTtl: 15m
+  semantic:
+    enabled: true
+    mode: shadow
+    embeddingModel: cache-embedding
+    threshold: 0.97
+    maxMessages: 3
+    defaultTtl: 15m
+    sampleValidationRate: 0.10
+    servingApproved: false
+    servingCriteria:
+      minimumCandidates: 500
+      minimumPrecision: 0.99
+      maximumFalseHitRate: 0.01
+
+contextWindow:
+  warningThreshold: 0.70
+  compactThreshold: 0.85
+  rejectThreshold: 0.95
+
+policies:
+  standard:
+    cache: exact
+    maxOutput: 16384
+    models: [code-default]
+    mcpToolsets: []
+
+usageWindows: []
+
+mcp:
+  endpoint: /mcp
+  protocol:
+    primary: "2026-07-28"
+    compatibility: ["2025-11-25", "2025-03-26"]
+  servers: []
+  toolsets: {}
+  argumentLimit: 1mb
+
+telemetry:
+  serviceName: gatepatrol
+  prometheus:
+    enabled: true
+    path: /metrics
+  otel:
+    enabled: false
+  logging:
+    level: info
+    captureContent: false
+    captureHeaders: false

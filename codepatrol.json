@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "baseBranch": "main",
+  "verification": {
+    "argv": ["true"],
+    "timeoutMs": 180000
+  },
+  "maxReviewReturns": 3,
+  "agentCatalog": {
+    "argv": ["agentpatrol", "resolve", "--json"],
+    "timeoutMs": 10000,
+    "defaults": {
+      "spec-review": {
+        "agent": "agentpatrol/chief-architect",
+        "version": "1.0.0"
+      },
+      "plan-review": {
+        "agent": "agentpatrol/principal-engineer",
+        "version": "1.0.0"
+      },
+      "build-review": {
+        "agent": "agentpatrol/qa-engineer",
+        "version": "1.0.0"
+      },
+      "ship": {
+        "agent": "agentpatrol/release-manager",
+        "version": "1.0.0"
+      }
+    }
+  },
+  "contextPatrol": {
+    "argv": ["contextpatrol", "query", "--input", "-"],
+    "timeoutMs": 60000,
+    "profiles": {
+      "orientation": {
+        "facets": ["structure", "symbols", "relations"],
+        "maxOutputBytes": 9600
+      },
+      "implementation": {
+        "facets": ["symbols", "relations", "source", "tests"],
+        "maxOutputBytes": 14400
+      },
+      "impact": {
+        "facets": ["changes", "symbols", "relations", "tests"],
+        "maxOutputBytes": 14400
+      },
+      "readiness": {
+        "facets": ["changes", "tests", "relations"],
+        "maxOutputBytes": 9600
+      }
+    },
+    "defaults": {
+      "spec": "orientation",
+      "spec-review": "orientation",
+      "plan": "implementation",
+      "plan-review": "impact",
+      "build": "implementation",
+      "build-review": "impact",
+      "ship": "readiness"
+    }
+  },
+  "remote": {
+    "github": {
+      "enabled": true,
+      "repo": "shiborgi/gatepatrol",
+      "gitRemote": "origin",
+      "tokenEnv": "GITHUB_TOKEN",
+      "wiki": true,
+      "milestones": true,
+      "issues": true,
+      "comments": true,
+      "pushMain": true
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "gatepatrol",
+  "version": "0.1.0",
+  "description": "Local policy gateway for LLM and MCP traffic.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shiborgi/gatepatrol.git"
+  },
+  "homepage": "https://github.com/shiborgi/gatepatrol#readme",
+  "bugs": {
+    "url": "https://github.com/shiborgi/gatepatrol/issues"
+  },
+  "engines": {
+    "bun": "1.4.0"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "bun test",
+    "test:unit": "bun test test/unit test/property",
+    "test:contract": "bun test test/contract",
+    "test:integration": "bun test test/integration",
+    "test:live": "GATEPATROL_LIVE_TESTS=true bun test test/live",
+    "check": "bun run typecheck && bun run lint && bun test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.214.0",
+    "@opentelemetry/sdk-node": "0.214.0",
+    "hono": "4.13.5",
+    "ioredis": "6.0.0",
+    "prom-client": "15.1.3",
+    "yaml": "2.9.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@types/bun": "1.3.5",
+    "fast-check": "4.9.0",
+    "typescript": "5.9.2"
+  },
+  "packageManager": "bun@1.4.0"
+}

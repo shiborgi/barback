@@ -1,0 +1,10 @@
+.git
+.github
+.env
+gatepatrol.yaml
+node_modules
+coverage
+dist
+test
+*.log
+.DS_Store
