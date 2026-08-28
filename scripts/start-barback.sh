@@ -7,6 +7,7 @@ app_name="${BARBACK_APP_CONTAINER:-barback-gateway}"
 image="${BARBACK_APP_IMAGE:-barback:local}"
 network="${BARBACK_CONTAINER_NETWORK:-default}"
 valkey_name="${BARBACK_VALKEY_CONTAINER:-barback-valkey}"
+google_mcp_name="${BARBACK_GOOGLE_MCP_CONTAINER:-google-mcp}"
 config_file="${BARBACK_CONFIG_FILE:-$root_dir/barback.yaml}"
 env_file="${BARBACK_ENV_FILE:-$root_dir/.env}"
 
@@ -49,22 +50,51 @@ if [[ -z "$valkey_ip" ]]; then
   exit 1
 fi
 
+google_mcp_ip=""
+google_mcp_url=""
+if container inspect "$google_mcp_name" >/dev/null 2>&1; then
+  google_mcp_address="$(container inspect "$google_mcp_name" | plutil -extract '0.status.networks.0.ipv4Address' raw - 2>/dev/null || true)"
+  google_mcp_ip="${google_mcp_address%%/*}"
+fi
+if [[ -z "$google_mcp_ip" ]]; then
+  printf 'google-mcp container not found; skipping upstream injection\n'
+else
+  google_mcp_url="http://$google_mcp_ip:8090/mcp"
+  printf 'Resolved google-mcp upstream: %s\n' "$google_mcp_url"
+fi
+
 printf 'Building gateway image: %s\n' "$image"
 container build --tag "$image" "$root_dir"
 
 if container inspect "$app_name" >/dev/null 2>&1; then
   if container list --format json | grep -Fq "\"id\":\"$app_name\""; then
+    valkey_ok=false
     if container exec "$app_name" bun -e 'import Redis from "ioredis"; const redis = new Redis(process.env.VALKEY_URL); console.log(await redis.ping()); await redis.quit();' 2>/dev/null | grep -Fq PONG; then
+      valkey_ok=true
+    fi
+    recorded_google_mcp_ip="$(container inspect "$app_name" | plutil -extract '0.configuration.labels.google-mcp-ip' raw - 2>/dev/null || true)"
+    if { $valkey_ok; } && { [[ -z "$google_mcp_ip" ]] || [[ "$recorded_google_mcp_ip" == "$google_mcp_ip" ]]; }; then
       printf 'Gateway container already running: %s\n' "$app_name"
       exit 0
     fi
-    printf 'Recreating gateway container after the Valkey address changed.\n'
+    if ! $valkey_ok; then
+      printf 'Recreating gateway container after the Valkey address changed.\n'
+    else
+      printf 'Recreating gateway container after the google-mcp address changed.\n'
+    fi
     container stop "$app_name"
   fi
   container delete "$app_name"
 fi
 
 printf 'Starting gateway container: %s\n' "$app_name"
+run_extra_args=""
+if [[ -n "$google_mcp_url" ]]; then
+  run_extra_args="$run_extra_args --env GOOGLE_MCP_URL=$google_mcp_url"
+fi
+if [[ -n "$google_mcp_ip" ]]; then
+  run_extra_args="$run_extra_args --label google-mcp-ip=$google_mcp_ip"
+fi
 container run \
   --detach \
   --name "$app_name" \
@@ -76,6 +106,7 @@ container run \
   --env BARBACK_SERVER_HOST=0.0.0.0 \
   --env BARBACK_ADMIN_HOST=0.0.0.0 \
   --env VALKEY_URL="redis://$valkey_ip:6379" \
+  $run_extra_args \
   --volume "$config_file:/app/barback.yaml:ro" \
   "$image"
 

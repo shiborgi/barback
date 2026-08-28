@@ -91,7 +91,36 @@ mcp:
     primary: "2026-07-28"
     compatibility: ["2025-11-25", "2025-03-26"]
   servers: []
+  # Optional google-mcp upstream, addressed by the container IP resolved at startup
+  # (start-barback.sh injects GOOGLE_MCP_URL). Uncomment to enable:
+  #  - id: google
+  #    transport: streamable-http
+  #    url: env:GOOGLE_MCP_URL
+  #    required: false
+  #    auth:
+  #      bearerToken: env:GOOGLE_MCP_TOKEN
+  #    tools:
+  #      default: deny
+  #      allow: [list_calendars, list_events, get_event, free_busy, create_event, update_event, delete_event, quick_add]
+  #      policies:
+  #        list_calendars: { effect: read, cache: { mode: exact, ttl: 5m } }
+  #        list_events: { effect: read }
+  #        get_event: { effect: read, cache: { mode: exact, ttl: 1m } }
+  #        free_busy: { effect: read }
+  #        create_event: { effect: write }
+  #        update_event: { effect: write }
+  #        delete_event: { effect: write }
+  #        quick_add: { effect: write }
   toolsets: {}
+  #  calendar:
+  #    - google:list_calendars
+  #    - google:list_events
+  #    - google:get_event
+  #    - google:free_busy
+  #    - google:create_event
+  #    - google:update_event
+  #    - google:delete_event
+  #    - google:quick_add
   argumentLimit: 1mb
 
 telemetry:

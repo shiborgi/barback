@@ -34,6 +34,8 @@ cp .env.example .env
 
 The stack script builds `barback:local`, starts `barback-valkey` without exposing Redis to the host, discovers its internal IP, and starts `barback-gateway` with `VALKEY_URL=redis://<valkey-ip>:6379`. Override `BARBACK_CONTAINER_NETWORK` to use another Apple Container network.
 
+Apple Container does not resolve container names via DNS, so the script addresses dependencies by container IP on the shared network. Container IPs change when a container restarts, and `start-barback.sh` re-resolves them on every run. When the optional `google-mcp` container is present on the network, the script resolves its IP and injects `GOOGLE_MCP_URL=http://<ip>:8090/mcp`, which the gateway reads through `url: env:GOOGLE_MCP_URL` in `barback.yaml`. Published ports can be unreachable from the host with `ECONNRESET` unless Local Network access is granted; use the container IP from `container inspect` instead.
+
 The default `valkey/valkey:8-alpine` image does not include Valkey Search. For a basic installation, set `storage.valkey.vectorSearch: false` and `cache.semantic.enabled: false` in `barback.yaml`.
 
 If `container build` reports that Rosetta is not installed, set `rosetta = false` under `[build]` in `~/.config/container/config.toml`, restart Apple Container, and run the stack script again.

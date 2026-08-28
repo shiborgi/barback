@@ -98,7 +98,9 @@ cp .env.example .env
 ./scripts/start-barback.sh
 ```
 
-`start-barback.sh` builds the gateway image, starts Valkey without publishing its port, discovers Valkey's internal network address, and passes it to the gateway as `VALKEY_URL`. The gateway ports remain available at `127.0.0.1:8080` and `127.0.0.1:8081`.
+`start-barback.sh` builds the gateway image, starts Valkey without publishing its port, discovers Valkey's internal network address, and passes it to the gateway as `VALKEY_URL`. Apple Container does not resolve container names via DNS, so dependencies are addressed by container IP on the shared network. Container IPs change on restart, and the script re-resolves them at startup, recreating the gateway when a dependency address changed. Reach the gateway from the host through its container IP (see `container inspect barback-gateway`); published ports can return `ECONNRESET` unless Local Network access is granted, as described in [operations](docs/operations.md).
+
+The optional [google-mcp](https://github.com/shiborgi/google-mcp) upstream uses the same addressing model. When a `google-mcp` container is present on the network, `start-barback.sh` resolves its IP and injects `GOOGLE_MCP_URL=http://<ip>:8090/mcp`. Enable the upstream by uncommenting the `google` server and `calendar` toolset in `config/barback.example.yaml`; its `url: env:GOOGLE_MCP_URL` entry is resolved at startup by the recursive `env:` config loader.
 
 The default `valkey/valkey:8-alpine` image does not include Valkey Search. For this setup, set `storage.valkey.vectorSearch` and `cache.semantic.enabled` to `false` in `barback.yaml`, or use a Valkey image with Search support.
 
