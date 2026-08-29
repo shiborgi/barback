@@ -10,6 +10,7 @@ valkey_name="${BARBACK_VALKEY_CONTAINER:-barback-valkey}"
 google_mcp_name="${BARBACK_GOOGLE_MCP_CONTAINER:-google-mcp}"
 config_file="${BARBACK_CONFIG_FILE:-$root_dir/barback.yaml}"
 env_file="${BARBACK_ENV_FILE:-$root_dir/.env}"
+health_port="${BARBACK_HEALTH_PORT:-8080}"
 
 if ! command -v container >/dev/null 2>&1; then
   printf 'Apple Container CLI not found. Install it and try again.\n' >&2
@@ -50,6 +51,24 @@ if [[ -z "$valkey_ip" ]]; then
   exit 1
 fi
 
+wait_for_gateway_health() {
+  local gateway_address
+  gateway_address="$(container inspect "$app_name" | plutil -extract '0.status.networks.0.ipv4Address' raw - 2>/dev/null || true)"
+  local gateway_ip="${gateway_address%%/*}"
+  if [[ -z "$gateway_ip" ]]; then
+    printf 'Could not determine the gateway container IP.\n' >&2
+    return 1
+  fi
+  for _ in {1..30}; do
+    if curl -sf "http://$gateway_ip:$health_port/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  printf 'Gateway did not become healthy. Check logs with: container logs %s\n' "$app_name" >&2
+  return 1
+}
+
 google_mcp_ip=""
 google_mcp_url=""
 if container inspect "$google_mcp_name" >/dev/null 2>&1; then
@@ -74,8 +93,11 @@ if container inspect "$app_name" >/dev/null 2>&1; then
     fi
     recorded_google_mcp_ip="$(container inspect "$app_name" | plutil -extract '0.configuration.labels.google-mcp-ip' raw - 2>/dev/null || true)"
     if { $valkey_ok; } && { [[ -z "$google_mcp_ip" ]] || [[ "$recorded_google_mcp_ip" == "$google_mcp_ip" ]]; }; then
-      printf 'Gateway container already running: %s\n' "$app_name"
-      exit 0
+      if wait_for_gateway_health; then
+        printf 'Gateway container already running: %s\n' "$app_name"
+        exit 0
+      fi
+      exit 1
     fi
     if ! $valkey_ok; then
       printf 'Recreating gateway container after the Valkey address changed.\n'
@@ -112,9 +134,12 @@ container run \
 
 for _ in {1..30}; do
   if container exec "$app_name" bun -e 'import Redis from "ioredis"; const redis = new Redis(process.env.VALKEY_URL); console.log(await redis.ping()); await redis.quit();' 2>/dev/null | grep -Fq PONG; then
-    printf 'Gateway is running on 127.0.0.1:8080 and 127.0.0.1:8081\n'
-    printf 'Gateway-Valkey network: %s (%s)\n' "$network" "$valkey_ip"
-    exit 0
+    if wait_for_gateway_health; then
+      printf 'Gateway is running on 127.0.0.1:8080 and 127.0.0.1:8081\n'
+      printf 'Gateway-Valkey network: %s (%s)\n' "$network" "$valkey_ip"
+      exit 0
+    fi
+    exit 1
   fi
   sleep 1
 done

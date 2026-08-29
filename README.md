@@ -107,6 +107,37 @@ The default `valkey/valkey:8-alpine` image does not include Valkey Search. For t
 
 If `container build` reports that Rosetta is not installed, set `rosetta = false` under `[build]` in `~/.config/container/config.toml`, restart Apple Container, and run the stack script again.
 
+Apple Container has no restart policy, so a reboot or crash leaves the stack stopped. `scripts/keepalive.sh` performs a one-pass supervision check: it starts any existing-but-stopped `barback-valkey`, `barback-gateway`, or optional `google-mcp` container, leaves running containers untouched, skips an absent optional `google-mcp`, and reruns `scripts/start-barback.sh` after a successful restart so gateway addresses are re-resolved. It exits non-zero if any container cannot be started or the refresh fails, and no-ops successfully when everything is already running. It is a one-pass check and adds no daemon; schedule it with launchd or cron.
+
+launchd (run every minute):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.shiborgi.barback.keepalive</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/absolute/path/to/barback/scripts/keepalive.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+```
+
+Load it with `launchctl load ~/Library/LaunchAgents/com.shiborgi.barback.keepalive.plist`.
+
+cron (run every minute):
+
+```sh
+* * * * * /absolute/path/to/barback/scripts/keepalive.sh
+```
+
 ## CodePatrol
 
 This repository is configured for the complete CodePatrol lifecycle: spec, plan, build, reviews, verification, ship, AgentPatrol resolution, ContextPatrol snapshots, and optional GitHub synchronization. The verification gate runs `bun --no-env-file run check` so ignored local credentials and service settings cannot change the result.
