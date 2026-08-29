@@ -46,6 +46,19 @@ Stop the stack with:
 container stop barback-gateway barback-valkey
 ```
 
+## Live Verification
+
+An opt-in suite verifies the running stack over the public listener. It is never part of the default `bun run check` run. It asserts that Barback advertises `google.list_calendars` over MCP and returns one authenticated non-streaming chat completion. It never echoes bearer tokens, API keys, refresh tokens, or full response content.
+
+Start the stack, then point the suite at it with your client key:
+
+```sh
+./scripts/start-barback.sh
+BARBACK_BASE_URL=http://127.0.0.1:8080 BARBACK_CLIENT_KEY=<key> bun run test:live
+```
+
+`BARBACK_BASE_URL` defaults to `http://127.0.0.1:8080`. On failure the suite reports only the HTTP status, the failing assertion, and the minimal assertion data (whether `google.list_calendars` was found, or content presence and length).
+
 ## Local Valkey
 
 Start Valkey with Apple Container for local integration tests:
