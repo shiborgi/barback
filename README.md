@@ -88,19 +88,20 @@ See [configuration](docs/configuration.md), [architecture](docs/architecture.md)
 
 ## Apple Container
 
-The gateway and Valkey can run as containers on the same Apple Container network. Install Apple Container from its signed release package, start its system service, create the local configuration and environment file, then run:
+The gateway, Valkey, and Google MCP can run on the same Apple Container network. Install Apple Container from its signed release package, start its system service, create the local configuration and environment file, then start Google MCP before Barback:
 
 ```sh
 container system start
 cp config/barback.example.yaml barback.yaml
 cp .env.example .env
-# Edit .env and set the Ollama API key and model names.
+# Edit .env and set the Ollama API key, model names, and Google MCP token.
+../google-mcp/scripts/start-google-mcp.sh
 ./scripts/start-barback.sh
 ```
 
 `start-barback.sh` builds the gateway image, starts Valkey without publishing its port, discovers Valkey's internal network address, and passes it to the gateway as `VALKEY_URL`. Apple Container does not resolve container names via DNS, so dependencies are addressed by container IP on the shared network. Container IPs change on restart, and the script re-resolves them at startup, recreating the gateway when a dependency address changed. Reach the gateway from the host through its container IP (see `container inspect barback-gateway`); published ports can return `ECONNRESET` unless Local Network access is granted, as described in [operations](docs/operations.md).
 
-The optional [google-mcp](https://github.com/shiborgi/google-mcp) upstream uses the same addressing model. When a `google-mcp` container is present on the network, `start-barback.sh` resolves its IP and injects `GOOGLE_MCP_URL=http://<ip>:8090/mcp`. Enable the upstream by uncommenting the `google` server and `calendar` toolset in `config/barback.example.yaml`; its `url: env:GOOGLE_MCP_URL` entry is resolved at startup by the recursive `env:` config loader.
+The [google-mcp](https://github.com/shiborgi/google-mcp) upstream uses the same addressing model. `start-barback.sh` resolves the `google-mcp` container IP and injects `GOOGLE_MCP_URL=http://<ip>:8090/mcp`; its `url: env:GOOGLE_MCP_URL` entry is resolved at startup by the recursive `env:` config loader. Do not add the URL to `.env`. Google MCP restarts receive a new IP, so rerun `./scripts/start-barback.sh` after every Google MCP restart to recreate Barback with the new upstream address.
 
 The default `valkey/valkey:8-alpine` image does not include Valkey Search. For this setup, set `storage.valkey.vectorSearch` and `cache.semantic.enabled` to `false` in `barback.yaml`, or use a Valkey image with Search support.
 
