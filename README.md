@@ -84,7 +84,7 @@ Authenticated admin listener, `127.0.0.1:8081` by default:
 - `DELETE /admin/cache/namespaces/:namespace`
 - `POST /admin/config/reload`
 
-See [configuration](docs/configuration.md), [architecture](docs/architecture.md), [operations](docs/operations.md), and the [complete technical guide](docs/complete-guide.md) for details.
+See [configuration](docs/configuration.md), [architecture](docs/architecture.md), [operations](docs/operations.md), the proposed [DNS and service discovery specification](docs/dns-service-discovery-spec.md), and the [complete technical guide](docs/complete-guide.md) for details.
 
 ## Apple Container
 
