@@ -88,7 +88,7 @@ func (s *supervisor) reconcile() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now().UTC()
-	contents, err := os.ReadFile("/records/lease.json")
+	contents, err := os.ReadFile("/records/current/lease.json")
 	if err == nil {
 		if candidate, ok := parseLease(contents); ok && s.accept(candidate, now) {
 			// A repeated sequence deliberately keeps the already accepted lease.

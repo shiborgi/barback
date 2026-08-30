@@ -1,0 +1,61 @@
+version: 1
+stackId: barback-local
+network: barback
+networkMode: nat
+dns:
+  zone: barback.internal
+  container: barback-dns
+  image: barback-dns:build-sha256-1234567890abcdef
+  buildContext: dns
+  ttl: 5s
+  lease: 30s
+services:
+  barback:
+    role: gateway
+    container: barback-gateway
+    dns: barback.internal
+    port: 8080
+    required: true
+    publishedPorts:
+      - { hostIp: 127.0.0.1, hostPort: 8080, containerPort: 8080 }
+      - { hostIp: 127.0.0.1, hostPort: 8081, containerPort: 8081 }
+    runtime:
+      mode: managed
+      image: barback:build-sha256-1234567890abcdef
+      buildContext: .
+      envFile: .env
+      env:
+        BARBACK_CONFIG: /app/barback.yaml
+        BARBACK_SERVER_HOST: 0.0.0.0
+        BARBACK_ADMIN_HOST: 0.0.0.0
+        VALKEY_URL: redis://valkey.barback.internal:6379
+        GOOGLE_MCP_URL: http://google.mcp.barback.internal:8090/mcp
+      requiredEnv: [BARBACK_CONFIG, BARBACK_SERVER_HOST, BARBACK_ADMIN_HOST]
+      mounts:
+        - { source: barback.yaml, target: /app/barback.yaml, readOnly: true }
+    health: { type: http, path: /health }
+  valkey:
+    role: storage
+    container: barback-valkey
+    dns: valkey.barback.internal
+    port: 6379
+    required: true
+    runtime:
+      mode: managed
+      image: valkey/valkey@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      command: [valkey-server]
+    health: { type: exec, command: [valkey-cli, ping] }
+  google:
+    role: mcp
+    container: google-mcp
+    dns: google.mcp.barback.internal
+    port: 8090
+    path: /mcp
+    required: false
+    runtime:
+      mode: adopted
+      labels:
+        io.shiborgi.barback.stack: barback-local
+        io.shiborgi.barback.service: google
+        io.shiborgi.barback.role: mcp
+    health: { type: http, path: /health }

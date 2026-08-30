@@ -22,19 +22,19 @@ container run --rm \
 
 Inside a container, configure the server hosts as `0.0.0.0`. Point `VALKEY_URL` at a reachable Valkey address rather than container loopback.
 
-To run the gateway and Valkey together on Apple Container's `default` network:
+For the convergent managed stack, use the reconciler rather than the legacy IP-injection scripts:
 
 ```sh
-container system start
 cp config/barback.example.yaml barback.yaml
 cp .env.example .env
-# Edit .env and set the Ollama API key and model names.
-./scripts/start-barback.sh
+# Edit .env, then use the immutable image digest appropriate for your Valkey build.
+cp config/barback-stack.example.yaml barback-stack.yaml
+bun run reconcile -- up
 ```
 
-The stack script builds `barback:local`, starts `barback-valkey` without exposing Redis to the host, discovers its internal IP, and starts `barback-gateway` with `VALKEY_URL=redis://<valkey-ip>:6379`. Override `BARBACK_CONTAINER_NETWORK` to use another Apple Container network.
+`up` mounts the gateway configuration read-only, passes `.env` with `--env-file`, applies the manifest's required environment, and configures service DNS to use `barback.internal`. `reconcile` runs HTTP or exec probes from the manifest and withdraws DNS records instead of renewing when a required service is unavailable. `down` removes managed services and the resolver.
 
-Apple Container does not resolve container names via DNS, so the script addresses dependencies by container IP on the shared network. Container IPs change when a container restarts, and `start-barback.sh` re-resolves them on every run. When the optional `google-mcp` container is present on the network, the script resolves its IP and injects `GOOGLE_MCP_URL=http://<ip>:8090/mcp`, which the gateway reads through `url: env:GOOGLE_MCP_URL` in `barback.yaml`. Published ports can be unreachable from the host with `ECONNRESET` unless Local Network access is granted; use the container IP from `container inspect` instead.
+`client-config` publishes the Apple Container network `hostAddress` as `hostGateway`, and uses the resolver address only for `dnsServers`. The address and resolver instance identity both contribute to `dnsGeneration`; a change recreates managed DNS consumers before refreshed records and client configuration are published.
 
 The default `valkey/valkey:8-alpine` image does not include Valkey Search. For a basic installation, set `storage.valkey.vectorSearch: false` and `cache.semantic.enabled: false` in `barback.yaml`.
 
@@ -53,7 +53,8 @@ An opt-in suite verifies the running stack over the public listener. It is never
 Start the stack, then point the suite at it with your client key:
 
 ```sh
-./scripts/start-barback.sh
+cp config/barback-stack.example.yaml barback-stack.yaml
+bun run reconcile -- up
 BARBACK_BASE_URL=http://127.0.0.1:8080 BARBACK_CLIENT_KEY=<key> bun run test:live
 ```
 

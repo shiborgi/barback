@@ -40,15 +40,10 @@ const SLEEP_STUB = `#!/usr/bin/env bash
 exit 0
 `;
 
-const valkeyInspect =
-  '[{"status":{"networks":[{"ipv4Address":"192.168.64.10/24"}]},"configuration":{"labels":{}}}]';
+const valkeyInspect = '[{"status":{"networks":[{"ipv4Address":"192.168.64.10/24"}]}}]';
 
-function googleInspect(ip: string) {
-  return `[{"status":{"networks":[{"ipv4Address":"${ip}/24"}]},"configuration":{"labels":{}}}]`;
-}
-
-function gatewayInspect(labelIp: string, healthIp = "127.0.0.1") {
-  return `[{"status":{"networks":[{"ipv4Address":"${healthIp}/24"}]},"configuration":{"labels":{"google-mcp-ip":"${labelIp}"}}}]`;
+function gatewayInspect(resolver = "192.168.65.2", healthIp = "127.0.0.1") {
+  return `[{"status":{"networks":[{"ipv4Address":"${healthIp}/24"}]},"configuration":{"dns":{"nameservers":["${resolver}"]}}}]`;
 }
 
 const dirs: string[] = [];
@@ -105,6 +100,7 @@ async function runScript(
       BARBACK_CONFIG_FILE: configFile,
       BARBACK_ENV_FILE: envFile,
       BARBACK_HEALTH_PORT: String(server.port),
+      BARBACK_DNS_RESOLVER: "192.168.65.2",
     },
   });
   const stdout = await new Response(proc.stdout).text();
@@ -120,43 +116,43 @@ afterEach(() => {
   }
 });
 
-describe("start-barback.sh google-mcp addressing", () => {
-  test("injects GOOGLE_MCP_URL with the resolved IP when the google-mcp container exists", async () => {
+describe("start-barback.sh DNS addressing", () => {
+  test("injects canonical dependency URLs and the Barback resolver", async () => {
     const { exitCode, log, stdout } = await runScript({
       "inspect-barback-valkey.json": valkeyInspect,
-      "inspect-google-mcp.json": googleInspect("192.168.64.12"),
-      "inspect-barback-gateway.json": gatewayInspect("192.168.64.12"),
+      "inspect-barback-gateway.json": gatewayInspect(),
       "list.json": '[{"id":"barback-valkey"}]',
     });
     expect(exitCode).toBe(0);
-    expect(log).toContain("--env GOOGLE_MCP_URL=http://192.168.64.12:8090/mcp");
-    expect(log).toContain("--label google-mcp-ip=192.168.64.12");
-    expect(stdout).toContain("Resolved google-mcp upstream: http://192.168.64.12:8090/mcp");
+    expect(log).toContain("--dns 192.168.65.2");
+    expect(log).toContain("--dns-search barback.internal");
+    expect(log).toContain("--env VALKEY_URL=redis://valkey.barback.internal:6379");
+    expect(log).toContain("--env GOOGLE_MCP_URL=http://google.mcp.barback.internal:8090/mcp");
+    expect(log).not.toContain("google-mcp-ip");
+    expect(stdout).not.toContain("192.168.64.12");
   });
 
-  test("skips injection and prints a notice when the google-mcp container is absent", async () => {
-    const { exitCode, log, stdout } = await runScript({
+  test("does not discover google-mcp before starting the gateway", async () => {
+    const { exitCode, log } = await runScript({
       "inspect-barback-valkey.json": valkeyInspect,
-      "inspect-barback-gateway.json": gatewayInspect(""),
+      "inspect-barback-gateway.json": gatewayInspect(),
       "list.json": '[{"id":"barback-valkey"}]',
     });
     expect(exitCode).toBe(0);
-    expect(log).not.toContain("GOOGLE_MCP_URL");
-    expect(stdout).toContain("google-mcp container not found; skipping upstream injection");
+    expect(log).not.toContain("inspect google-mcp");
   });
 
-  test("recreates the gateway when the recorded google-mcp IP differs", async () => {
+  test("recreates the gateway when its bootstrap resolver differs", async () => {
     const { exitCode, log, stdout } = await runScript({
       "inspect-barback-valkey.json": valkeyInspect,
-      "inspect-google-mcp.json": googleInspect("192.168.64.12"),
       "inspect-barback-gateway.json": gatewayInspect("192.168.64.11"),
       "list.json": '[{"id":"barback-valkey"},{"id":"barback-gateway"}]',
     });
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Recreating gateway container after the google-mcp address changed.");
+    expect(stdout).toContain("Recreating gateway container after the DNS resolver changed.");
     expect(log).toContain("stop barback-gateway");
     expect(log).toContain("delete barback-gateway");
-    expect(log).toContain("--env GOOGLE_MCP_URL=http://192.168.64.12:8090/mcp");
+    expect(log).toContain("--dns 192.168.65.2");
   });
 });
 

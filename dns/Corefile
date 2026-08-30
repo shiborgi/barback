@@ -1,5 +1,5 @@
 barback.internal:53 {
-    file /records/db.barback.internal {
+    file /records/current/db.barback.internal {
         reload 2s
     }
     prometheus :9153

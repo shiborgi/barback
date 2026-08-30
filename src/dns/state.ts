@@ -76,6 +76,7 @@ export type DnsLease = z.infer<typeof leaseSchema>;
 export interface DnsGenerationState {
   dnsGeneration: string;
   resolverAddresses: string[];
+  resolverHostAddress: string;
   resolverInstanceId: string;
 }
 
@@ -84,8 +85,10 @@ const persistedStateSchema = strictObject({
   stackId: z.string().regex(serviceIdPattern),
   dnsGeneration: z.string().min(1),
   resolverAddresses: z.array(ipAddress).min(1),
+  resolverHostAddress: ipAddress,
   resolverInstanceId: z.string().min(1),
   lease: leaseSchema.optional(),
+  lastSuccessfulReconciliation: timestamp.optional(),
 }).superRefine((state, ctx) => {
   if (new Set(state.resolverAddresses).size !== state.resolverAddresses.length) {
     ctx.addIssue({
@@ -160,21 +163,22 @@ export const clientConfigSchema = strictObject({
 export type ClientConfig = z.infer<typeof clientConfigSchema>;
 
 function generation(addresses: string[], runtimeInstanceId: string): string {
-  return createHash("sha256")
-    .update(JSON.stringify({ addresses, runtimeInstanceId }))
-    .digest("hex");
+  return `${runtimeInstanceId}.${createHash("sha256").update(addresses.join(",")).digest("hex").slice(0, 16)}`;
 }
 
 export function updateDnsGeneration(
   previous: DnsGenerationState | undefined,
   resolverAddresses: string[],
   resolverInstanceId: string,
+  resolverHostAddress = resolverAddresses[0],
 ): DnsGenerationState {
   if (!resolverInstanceId) throw new ConfigError("Resolver instance identity is required");
   const addresses = [...new Set(resolverAddresses)].sort();
   if (addresses.length === 0 || addresses.some((address) => isIP(address) === 0)) {
     throw new ConfigError("Resolver address set must contain at least one IP address");
   }
+  if (!resolverHostAddress || isIP(resolverHostAddress) === 0)
+    throw new ConfigError("Resolver host address must be an IP address");
   if (
     previous &&
     previous.resolverInstanceId === resolverInstanceId &&
@@ -187,6 +191,7 @@ export function updateDnsGeneration(
   }
   return {
     resolverAddresses: addresses,
+    resolverHostAddress,
     resolverInstanceId,
     dnsGeneration: generation(addresses, resolverInstanceId),
   };
@@ -424,9 +429,18 @@ export class DnsStateStore {
     return state;
   }
 
-  async updateResolver(addresses: string[], resolverInstanceId: string): Promise<DnsState> {
+  async updateResolver(
+    addresses: string[],
+    resolverInstanceId: string,
+    resolverHostAddress?: string,
+  ): Promise<DnsState> {
     const current = await this.load();
-    const nextGeneration = updateDnsGeneration(current ?? undefined, addresses, resolverInstanceId);
+    const nextGeneration = updateDnsGeneration(
+      current ?? undefined,
+      addresses,
+      resolverInstanceId,
+      resolverHostAddress,
+    );
     const next: DnsState = {
       schemaVersion: 1,
       stackId: this.stackId,
@@ -448,5 +462,21 @@ export class DnsStateStore {
     }
     await persistDnsState(this.root, { ...current, lease });
     return lease;
+  }
+
+  async commit(
+    nextGeneration: DnsGenerationState,
+    lease: DnsLease,
+    now = new Date(),
+  ): Promise<void> {
+    if (lease.dnsGeneration !== nextGeneration.dnsGeneration)
+      throw new ConfigError("Lease generation does not match DNS state");
+    await persistDnsState(this.root, {
+      schemaVersion: 1,
+      stackId: this.stackId,
+      ...nextGeneration,
+      lease,
+      lastSuccessfulReconciliation: now.toISOString(),
+    });
   }
 }

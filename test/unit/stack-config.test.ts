@@ -32,6 +32,7 @@ function stackInput() {
         container: "barback-gateway",
         dns: "barback.internal",
         port: 8080,
+        required: true,
         runtime: { mode: "managed", image: "barback:build-sha256-0123456789abcdef" },
         health: { type: "http", path: "/health/ready" },
       },
@@ -40,6 +41,7 @@ function stackInput() {
         container: "barback-valkey",
         dns: "valkey.barback.internal",
         port: 6379,
+        required: true,
         runtime: {
           mode: "managed",
           image:
@@ -97,6 +99,7 @@ describe("DNS stack contract", () => {
 
   test("cross-validates required network MCPs and excludes stdio MCPs", () => {
     const config = testConfig();
+    config.storage.valkey.url = "redis://valkey.barback.internal:6379";
     config.mcp.servers = [
       {
         id: "google",
@@ -116,6 +119,14 @@ describe("DNS stack contract", () => {
     expect(() =>
       validateStackAgainstBarback(stackSchema.parse(stackInput()), config),
     ).not.toThrow();
+
+    const google = config.mcp.servers.find((server) => server.id === "google");
+    if (!google) throw new Error("google fixture missing");
+    google.required = false;
+    expect(() => validateStackAgainstBarback(stackSchema.parse(stackInput()), config)).toThrow(
+      /required setting/,
+    );
+    google.required = true;
 
     const missing = stackInput();
     delete missing.services.google;

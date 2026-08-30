@@ -83,6 +83,9 @@ export function validateStackAgainstBarback(stack: StackConfig, config: BarbackC
     if (server.transport !== "streamable-http") {
       errors.push(`MCP ${serviceId} must use streamable-http in barback.mcp.servers`);
     }
+    if (server.required !== service.required) {
+      errors.push(`MCP ${serviceId} required setting must match barback.mcp.servers`);
+    }
     const parsed = mcpUrl(server.url);
     if (!parsed) {
       errors.push(`MCP ${serviceId} must define a valid URL`);
@@ -102,6 +105,21 @@ export function validateStackAgainstBarback(stack: StackConfig, config: BarbackC
       errors.push(
         `MCP ${serviceId} URL must be http://${service.dns}:${service.port}${expectedPath}`,
       );
+    }
+  }
+
+  const valkey = stack.services.valkey;
+  if (valkey) {
+    const parsed = mcpUrl(config.storage.valkey.url);
+    if (
+      parsed?.protocol !== "redis:" ||
+      parsed.hostname !== valkey.dns ||
+      (parsed.port || "6379") !== String(valkey.port) ||
+      parsed.username ||
+      parsed.password ||
+      (parsed.pathname || "/") !== "/"
+    ) {
+      errors.push(`Valkey URL must be redis://${valkey.dns}:${valkey.port}`);
     }
   }
 

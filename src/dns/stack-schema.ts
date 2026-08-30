@@ -34,6 +34,8 @@ const managedRuntimeSchema = strictObject({
   image: imageReference,
   buildContext: z.string().min(1).optional(),
   envFile: z.string().min(1).optional(),
+  env: z.record(z.string().min(1), z.string()).default({}),
+  requiredEnv: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)).default([]),
   mounts: z
     .array(
       strictObject({
@@ -62,6 +64,15 @@ const serviceSchema = strictObject({
   port: z.int().min(1).max(65535),
   path: z.string().regex(pathPattern).optional(),
   required: z.boolean().default(false),
+  publishedPorts: z
+    .array(
+      strictObject({
+        hostIp: z.string().regex(/^(?:\d{1,3}\.){3}\d{1,3}$/),
+        hostPort: z.int().min(1).max(65535),
+        containerPort: z.int().min(1).max(65535),
+      }),
+    )
+    .default([]),
   runtime: runtimeSchema,
   health: healthSchema,
 });
@@ -70,6 +81,7 @@ const dnsSchema = strictObject({
   zone: z.string().regex(zonePattern),
   container: z.string().regex(containerNamePattern),
   image: imageReference,
+  buildContext: z.string().min(1).optional(),
   ttl: duration,
   lease: duration,
 });
@@ -91,6 +103,13 @@ export const stackSchema = strictObject({
       path: ["dns", "ttl"],
       code: "custom",
       message: "TTL must not exceed 30 seconds",
+    });
+  }
+  if (stack.dns.ttl < 1_000 || stack.dns.ttl % 1_000 !== 0) {
+    ctx.addIssue({
+      path: ["dns", "ttl"],
+      code: "custom",
+      message: "TTL must be a whole number of seconds",
     });
   }
   if (stack.dns.lease <= stack.dns.ttl) {
@@ -162,6 +181,18 @@ export const stackSchema = strictObject({
         });
       }
     }
+    const portKeys = new Set<string>();
+    for (const port of service.publishedPorts) {
+      const key = `${port.hostIp}:${port.hostPort}`;
+      if (portKeys.has(key)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["services", serviceId, "publishedPorts"],
+          message: `Duplicate published port ${key}`,
+        });
+      }
+      portKeys.add(key);
+    }
     if (service.role === "storage") {
       if (serviceId !== "valkey" || service.dns !== `valkey.${stack.dns.zone}`) {
         ctx.addIssue({
@@ -231,6 +262,15 @@ export const stackSchema = strictObject({
       path: ["services", "valkey", "role"],
       message: "valkey must have the storage role",
     });
+  }
+  for (const serviceId of ["barback", "valkey"] as const) {
+    if (stack.services[serviceId] && !stack.services[serviceId].required) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["services", serviceId, "required"],
+        message: `${serviceId} must be required`,
+      });
+    }
   }
 });
 

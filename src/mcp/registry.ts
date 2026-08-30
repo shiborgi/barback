@@ -82,6 +82,25 @@ export class McpRegistry {
     );
   }
 
+  async #reconnect(server: ServerConfig): Promise<void> {
+    const previous = this.#connected.get(server.id);
+    this.#connected.delete(server.id);
+    await previous?.client.close().catch(() => undefined);
+    // Constructing a new transport from the FQDN deliberately forces the next request
+    // through a fresh resolver lookup rather than retaining a failed connection.
+    const client = new Client({ name: "barback", version: "0.1.0" }, { capabilities: {} });
+    const headers = server.auth
+      ? { authorization: `Bearer ${server.auth.bearerToken}` }
+      : undefined;
+    const transport = new StreamableHTTPClientTransport(new URL(server.url ?? ""), {
+      requestInit: headers ? { headers } : undefined,
+    });
+    await client.connect(transport);
+    const listed = await client.listTools();
+    this.#connected.set(server.id, { config: server, client, tools: listed.tools });
+    this.#status.set(server.id, "connected");
+  }
+
   ready(): boolean {
     return this.config.servers
       .filter((server) => server.required)
@@ -140,11 +159,22 @@ export class McpRegistry {
 
   async call(policy: PolicyConfig, name: string, args: Record<string, unknown> | undefined) {
     const { server, serverId, toolName, policy: toolPolicy } = this.describe(policy, name);
+    let result: Awaited<ReturnType<Client["callTool"]>>;
+    try {
+      result = await server.client.callTool({ name: toolName, arguments: args });
+    } catch (error) {
+      if (server.config.transport !== "streamable-http" || !(error instanceof TypeError))
+        throw error;
+      await this.#reconnect(server.config);
+      // A transport error can occur after the upstream has executed the request. Reconnect
+      // for subsequent calls, but never replay a potentially side-effecting tool call.
+      throw error;
+    }
     return {
       server: serverId,
       tool: toolName,
       policy: toolPolicy,
-      result: await server.client.callTool({ name: toolName, arguments: args }),
+      result,
     };
   }
 

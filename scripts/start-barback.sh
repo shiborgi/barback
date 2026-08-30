@@ -5,9 +5,11 @@ set -euo pipefail
 root_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 app_name="${BARBACK_APP_CONTAINER:-barback-gateway}"
 image="${BARBACK_APP_IMAGE:-barback:local}"
-network="${BARBACK_CONTAINER_NETWORK:-default}"
+network="${BARBACK_CONTAINER_NETWORK:-barback}"
 valkey_name="${BARBACK_VALKEY_CONTAINER:-barback-valkey}"
-google_mcp_name="${BARBACK_GOOGLE_MCP_CONTAINER:-google-mcp}"
+resolver="${BARBACK_DNS_RESOLVER:-}"
+search="${BARBACK_DNS_SEARCH:-barback.internal}"
+stack_id="${BARBACK_STACK_ID:-barback-local}"
 config_file="${BARBACK_CONFIG_FILE:-$root_dir/barback.yaml}"
 env_file="${BARBACK_ENV_FILE:-$root_dir/.env}"
 health_port="${BARBACK_HEALTH_PORT:-8080}"
@@ -29,6 +31,11 @@ if [[ ! -f "$env_file" ]]; then
   exit 1
 fi
 
+if [[ -z "$resolver" ]]; then
+  printf 'BARBACK_DNS_RESOLVER is required; run scripts/reconcile-apple-container-dns.sh.\n' >&2
+  exit 1
+fi
+
 if ! container system status >/dev/null 2>&1; then
   printf 'Starting Apple Container services...\n'
   container system start
@@ -41,15 +48,10 @@ fi
 
 BARBACK_VALKEY_CONTAINER="$valkey_name" \
 BARBACK_VALKEY_NETWORK="$network" \
-BARBACK_VALKEY_PUBLISH=false \
+BARBACK_DNS_RESOLVER="$resolver" \
+BARBACK_DNS_SEARCH="$search" \
+BARBACK_STACK_ID="$stack_id" \
 "$root_dir/scripts/start-valkey.sh"
-
-valkey_address="$(container inspect "$valkey_name" | plutil -extract '0.status.networks.0.ipv4Address' raw -)"
-valkey_ip="${valkey_address%%/*}"
-if [[ -z "$valkey_ip" ]]; then
-  printf 'Could not determine the Valkey container IP.\n' >&2
-  exit 1
-fi
 
 wait_for_gateway_health() {
   local gateway_address
@@ -69,66 +71,43 @@ wait_for_gateway_health() {
   return 1
 }
 
-google_mcp_ip=""
-google_mcp_url=""
-if container inspect "$google_mcp_name" >/dev/null 2>&1; then
-  google_mcp_address="$(container inspect "$google_mcp_name" | plutil -extract '0.status.networks.0.ipv4Address' raw - 2>/dev/null || true)"
-  google_mcp_ip="${google_mcp_address%%/*}"
-fi
-if [[ -z "$google_mcp_ip" ]]; then
-  printf 'google-mcp container not found; skipping upstream injection\n'
-else
-  google_mcp_url="http://$google_mcp_ip:8090/mcp"
-  printf 'Resolved google-mcp upstream: %s\n' "$google_mcp_url"
-fi
-
 printf 'Building gateway image: %s\n' "$image"
 container build --tag "$image" "$root_dir"
 
 if container inspect "$app_name" >/dev/null 2>&1; then
   if container list --format json | grep -Fq "\"id\":\"$app_name\""; then
-    valkey_ok=false
-    if container exec "$app_name" bun -e 'import Redis from "ioredis"; const redis = new Redis(process.env.VALKEY_URL); console.log(await redis.ping()); await redis.quit();' 2>/dev/null | grep -Fq PONG; then
-      valkey_ok=true
-    fi
-    recorded_google_mcp_ip="$(container inspect "$app_name" | plutil -extract '0.configuration.labels.google-mcp-ip' raw - 2>/dev/null || true)"
-    if { $valkey_ok; } && { [[ -z "$google_mcp_ip" ]] || [[ "$recorded_google_mcp_ip" == "$google_mcp_ip" ]]; }; then
+    configured_resolver="$(container inspect "$app_name" | plutil -extract '0.configuration.dns.nameservers.0' raw - 2>/dev/null || true)"
+    if [[ "$configured_resolver" == "$resolver" ]]; then
       if wait_for_gateway_health; then
         printf 'Gateway container already running: %s\n' "$app_name"
         exit 0
       fi
       exit 1
     fi
-    if ! $valkey_ok; then
-      printf 'Recreating gateway container after the Valkey address changed.\n'
-    else
-      printf 'Recreating gateway container after the google-mcp address changed.\n'
-    fi
+    printf 'Recreating gateway container after the DNS resolver changed.\n'
     container stop "$app_name"
   fi
   container delete "$app_name"
 fi
 
 printf 'Starting gateway container: %s\n' "$app_name"
-run_extra_args=""
-if [[ -n "$google_mcp_url" ]]; then
-  run_extra_args="$run_extra_args --env GOOGLE_MCP_URL=$google_mcp_url"
-fi
-if [[ -n "$google_mcp_ip" ]]; then
-  run_extra_args="$run_extra_args --label google-mcp-ip=$google_mcp_ip"
-fi
 container run \
   --detach \
   --name "$app_name" \
   --network "$network" \
+  --dns "$resolver" \
+  --dns-search "$search" \
   --publish 127.0.0.1:8080:8080 \
   --publish 127.0.0.1:8081:8081 \
+  --label "io.shiborgi.barback.stack=$stack_id" \
+  --label "io.shiborgi.barback.service=barback" \
+  --label "io.shiborgi.barback.role=gateway" \
   --env-file "$env_file" \
   --env BARBACK_CONFIG=/app/barback.yaml \
   --env BARBACK_SERVER_HOST=0.0.0.0 \
   --env BARBACK_ADMIN_HOST=0.0.0.0 \
-  --env VALKEY_URL="redis://$valkey_ip:6379" \
-  $run_extra_args \
+  --env VALKEY_URL="redis://valkey.barback.internal:6379" \
+  --env GOOGLE_MCP_URL="http://google.mcp.barback.internal:8090/mcp" \
   --volume "$config_file:/app/barback.yaml:ro" \
   "$image"
 
@@ -136,7 +115,7 @@ for _ in {1..30}; do
   if container exec "$app_name" bun -e 'import Redis from "ioredis"; const redis = new Redis(process.env.VALKEY_URL); console.log(await redis.ping()); await redis.quit();' 2>/dev/null | grep -Fq PONG; then
     if wait_for_gateway_health; then
       printf 'Gateway is running on 127.0.0.1:8080 and 127.0.0.1:8081\n'
-      printf 'Gateway-Valkey network: %s (%s)\n' "$network" "$valkey_ip"
+      printf 'Gateway dependencies use DNS on Apple Container network %s\n' "$network"
       exit 0
     fi
     exit 1

@@ -21,8 +21,10 @@ describe("DNS control-plane state", () => {
     try {
       const first = updateDnsGeneration(undefined, ["192.0.2.10"], "dns-1");
       const same = updateDnsGeneration(first, ["192.0.2.10"], "dns-1");
-      const changed = updateDnsGeneration(first, ["192.0.2.11"], "dns-1");
+      const changedAddress = updateDnsGeneration(first, ["192.0.2.11"], "dns-1");
+      const changed = updateDnsGeneration(first, ["192.0.2.10"], "dns-2");
       expect(same.dnsGeneration).toBe(first.dnsGeneration);
+      expect(changedAddress.dnsGeneration).not.toBe(first.dnsGeneration);
       expect(changed.dnsGeneration).not.toBe(first.dnsGeneration);
       await expect(loadDnsState(root)).resolves.toBeNull();
     } finally {
@@ -64,7 +66,7 @@ describe("DNS control-plane state", () => {
         now,
       );
       expect((await loadDnsState(root))?.lease?.sequence).toBe(1);
-      const changed = await store.updateResolver(["192.0.2.11"], "dns-1");
+      const changed = await store.updateResolver(["192.0.2.11"], "dns-2");
       expect(changed.dnsGeneration).not.toBe(first.dnsGeneration);
       expect(changed.lease).toBeUndefined();
     } finally {

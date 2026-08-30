@@ -16,6 +16,7 @@ services:
     container: barback-gateway
     dns: barback.internal
     port: 8080
+    required: true
     runtime:
       mode: managed
       image: barback:build-sha256-0123456789abcdef
@@ -30,6 +31,7 @@ services:
     container: barback-valkey
     dns: valkey.barback.internal
     port: 6379
+    required: true
     runtime:
       mode: managed
       image: valkey/valkey@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

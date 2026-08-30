@@ -91,7 +91,7 @@ mcp:
     primary: "2026-07-28"
     compatibility: ["2025-11-25", "2025-03-26"]
   servers:
-    # start-barback.sh injects GOOGLE_MCP_URL from the google-mcp container IP.
+    # The reconciler validates this FQDN against barback-stack.yaml.
     - id: google
       transport: streamable-http
       url: env:GOOGLE_MCP_URL
