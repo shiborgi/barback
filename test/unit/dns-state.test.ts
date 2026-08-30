@@ -11,6 +11,7 @@ import {
   updateDnsGeneration,
   validateClientConfig,
 } from "../../src/dns/state.ts";
+import { DnsLeaseSupervisor, renderDnsRecords } from "../../src/dns/supervisor.ts";
 
 const now = new Date("2026-08-29T12:00:00.000Z");
 
@@ -127,5 +128,66 @@ describe("DNS control-plane state", () => {
       /ISO-8601/,
     );
     expect(() => clientConfigSchema.parse({ ...valid, token: "secret" })).toThrow();
+  });
+
+  test("fails closed on expiry, recovers on renewal, and rejects invalid lease updates", () => {
+    const supervisor = new DnsLeaseSupervisor("barback-local", "generation-1");
+    const lease = {
+      schemaVersion: 1,
+      stackId: "barback-local",
+      dnsGeneration: "generation-1",
+      sequence: 2,
+      validUntil: "2026-08-29T12:00:30.000Z",
+    };
+    supervisor.renew(lease, now);
+    expect(supervisor.status(now)).toEqual({ healthy: true, privateZone: "active" });
+    expect(supervisor.status(new Date("2026-08-29T12:00:31.000Z"))).toEqual({
+      healthy: false,
+      privateZone: "servfail",
+    });
+    expect(() => supervisor.renew({ ...lease, sequence: 1 }, now)).toThrow(/sequence/);
+    expect(() => supervisor.renew({ ...lease, stackId: "other-stack", sequence: 3 }, now)).toThrow(
+      /different stack/,
+    );
+    expect(() => supervisor.renew({ ...lease, dnsGeneration: "other", sequence: 3 }, now)).toThrow(
+      /generation/,
+    );
+    expect(() => supervisor.renew({ ...lease, dnsGeneration: "other" }, now)).toThrow(/generation/);
+    expect(() => supervisor.renew({ schemaVersion: 1 }, now)).toThrow(/stackId/);
+    supervisor.renew({ ...lease, sequence: 3, validUntil: "2026-08-29T12:01:00.000Z" }, now);
+    expect(supervisor.status(new Date("2026-08-29T12:00:31.000Z"))).toEqual({
+      healthy: true,
+      privateZone: "active",
+    });
+  });
+
+  test("keeps valid records when a reload fails and renders explicit A records only", async () => {
+    const supervisor = new DnsLeaseSupervisor("barback-local", "generation-1");
+    supervisor.renew(
+      {
+        schemaVersion: 1,
+        stackId: "barback-local",
+        dnsGeneration: "generation-1",
+        sequence: 1,
+        validUntil: "2026-08-29T12:00:30.000Z",
+      },
+      now,
+    );
+    const records = [
+      { name: "barback.internal", address: "192.0.2.10" },
+      { name: "dns.barback.internal", address: "192.0.2.12" },
+      { name: "valkey.barback.internal", address: "192.0.2.11" },
+    ];
+    await supervisor.reload(records, async () => {}, now);
+    const active = supervisor.activeRecords;
+    await expect(
+      supervisor.reload(records, async () => Promise.reject(new Error("reload failed")), now),
+    ).rejects.toThrow(/reload failed/);
+    expect(supervisor.activeRecords).toBe(active);
+    expect(renderDnsRecords(records)).toContain("@ IN A 192.0.2.10");
+    expect(renderDnsRecords(records)).toContain("@ IN SOA dns.barback.internal.");
+    expect(() =>
+      renderDnsRecords([{ name: "Bad.barback.internal", address: "192.0.2.10" }]),
+    ).toThrow(/inside barback.internal/);
   });
 });
