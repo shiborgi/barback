@@ -1,0 +1,54 @@
+version: 1
+stackId: barback-local
+network: barback
+networkMode: nat
+
+dns:
+  zone: barback.internal
+  container: barback-dns
+  image: barback-dns:build-sha256-0123456789abcdef
+  ttl: 5s
+  lease: 30s
+
+services:
+  barback:
+    role: gateway
+    container: barback-gateway
+    dns: barback.internal
+    port: 8080
+    runtime:
+      mode: managed
+      image: barback:build-sha256-0123456789abcdef
+      buildContext: .
+      envFile: .env
+    health:
+      type: http
+      path: /health/ready
+
+  valkey:
+    role: storage
+    container: barback-valkey
+    dns: valkey.barback.internal
+    port: 6379
+    runtime:
+      mode: managed
+      image: valkey/valkey@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    health:
+      type: exec
+      command: [valkey-cli, ping]
+
+  google:
+    role: mcp
+    container: google-mcp
+    dns: google.mcp.barback.internal
+    port: 8090
+    path: /mcp
+    required: true
+    runtime:
+      mode: managed
+      image: google-mcp:build-sha256-0123456789abcdef
+      buildContext: ../google-mcp
+      envFile: ../google-mcp/.env
+    health:
+      type: http
+      path: /health
