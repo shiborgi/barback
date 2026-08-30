@@ -28,14 +28,15 @@ const stack = parseStack({
       runtime: {
         mode: "managed",
         image: "barback:build-sha256-1234567890abcdef",
-        envFile: ".env",
         env: {
           BARBACK_CONFIG: "/app/barback.yaml",
           BARBACK_SERVER_HOST: "0.0.0.0",
           BARBACK_ADMIN_HOST: "0.0.0.0",
         },
         requiredEnv: ["BARBACK_CONFIG", "BARBACK_SERVER_HOST", "BARBACK_ADMIN_HOST"],
-        mounts: [{ source: "barback.yaml", target: "/app/barback.yaml", readOnly: true }],
+        mounts: [
+          { source: "config/barback.example.yaml", target: "/app/barback.yaml", readOnly: true },
+        ],
       },
       health: { type: "http", path: "/health" },
       publishedPorts: [{ hostIp: "127.0.0.1", hostPort: 8080, containerPort: 8080 }],
@@ -97,6 +98,7 @@ class FakeAdapter implements AppleContainerAdapter {
   runs: Array<Parameters<AppleContainerAdapter["run"]>[0]> = [];
   resolutions: Array<{ container: string; hostname: string; address: string }> = [];
   traffic: Array<{ container: string; hostname: string; port: number }> = [];
+  httpProbes: Array<{ address: string; port: number; path: string }> = [];
   constructor(readonly items: Map<string, ContainerSnapshot>) {}
   async ensureSystem() {}
   async ensureNetwork() {}
@@ -110,7 +112,9 @@ class FakeAdapter implements AppleContainerAdapter {
     if (current) this.items.set(input.name, { ...current, labels: input.labels });
   }
   async remove() {}
-  async probeHttp() {}
+  async probeHttp(address: string, port: number, path: string) {
+    this.httpProbes.push({ address, port, path });
+  }
   async resolveFrom(container: string, hostname: string, address: string) {
     this.resolutions.push({ container, hostname, address });
   }
@@ -408,6 +412,79 @@ describe("manifest reconciler", () => {
       expect(
         await readFile(join(root, "records", "current", "db.barback.internal"), "utf8"),
       ).toContain("dns IN A 192.0.2.2");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("converges dependency FQDNs within the restart window without replacing the gateway", async () => {
+    const root = await mkdtemp(join(tmpdir(), "barback-reconciler-"));
+    try {
+      const labels = (service: string, role: string) => ({
+        "io.shiborgi.barback.stack": "barback-local",
+        "io.shiborgi.barback.service": service,
+        "io.shiborgi.barback.role": role,
+      });
+      const adapter = new FakeAdapter(
+        new Map([
+          [
+            "barback-dns",
+            snapshot("resolver-a", "192.0.2.2", {
+              ...labels("dns", "dns"),
+              "io.shiborgi.barback.resolver-instance": "resolver-a",
+            }),
+          ],
+          [
+            "barback-gateway",
+            snapshot("gateway-stable", "192.0.2.3", labels("barback", "gateway"), [
+              { hostIp: "127.0.0.1", hostPort: 8080, containerPort: 8080 },
+            ]),
+          ],
+          ["barback-valkey", snapshot("valkey-a", "192.0.2.4", labels("valkey", "storage"))],
+          ["google-mcp", snapshot("google-a", "192.0.2.5", labels("google", "mcp"))],
+        ]),
+      );
+      const reconciler = new StackReconciler(
+        stack,
+        {} as never,
+        adapter,
+        new DnsStateStore("barback-local", root),
+      );
+      const startedAt = new Date("2026-08-30T12:00:00.000Z");
+      await reconciler.reconcile(startedAt);
+      const gatewayId = (await adapter.inspect("barback-gateway"))?.id;
+
+      adapter.items.set(
+        "barback-valkey",
+        snapshot("valkey-b", "192.0.2.40", labels("valkey", "storage")),
+      );
+      adapter.items.set("google-mcp", snapshot("google-b", "192.0.2.50", labels("google", "mcp")));
+      const convergedAt = new Date("2026-08-30T12:00:10.000Z");
+      await reconciler.reconcile(convergedAt);
+
+      const records = await readFile(
+        join(root, "records", "current", "db.barback.internal"),
+        "utf8",
+      );
+      expect(convergedAt.getTime() - startedAt.getTime()).toBeLessThan(15_000);
+      expect(records).toContain("valkey IN A 192.0.2.40");
+      expect(records).toContain("google.mcp IN A 192.0.2.50");
+      expect(adapter.resolutions).toContainEqual({
+        container: "barback-gateway",
+        hostname: "valkey.barback.internal",
+        address: "192.0.2.40",
+      });
+      expect(adapter.traffic).toContainEqual({
+        container: "barback-gateway",
+        hostname: "valkey.barback.internal",
+        port: 6379,
+      });
+      expect(adapter.httpProbes).toContainEqual({
+        address: "192.0.2.50",
+        port: 8090,
+        path: "/health",
+      });
+      expect((await adapter.inspect("barback-gateway"))?.id).toBe(gatewayId);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
