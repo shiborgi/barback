@@ -91,15 +91,47 @@
       "impact-grounded": {
         "facets": ["changes", "symbols", "relations", "source", "tests"],
         "maxOutputBytes": 24000
+      },
+      "spec-survey": {
+        "facets": ["structure", "symbols"],
+        "maxOutputBytes": 12800
+      },
+      "spec-deep": {
+        "facets": ["structure", "symbols", "relations"],
+        "maxOutputBytes": 19200
+      },
+      "plan-impact": {
+        "facets": ["changes", "symbols", "relations", "tests"],
+        "maxOutputBytes": 19200
+      },
+      "plan-deep": {
+        "facets": ["changes", "symbols", "relations", "source", "tests"],
+        "maxOutputBytes": 24000
+      },
+      "build-work": {
+        "facets": ["symbols", "source", "tests"],
+        "maxOutputBytes": 19200
+      },
+      "build-deep": {
+        "facets": ["symbols", "relations", "source", "tests"],
+        "maxOutputBytes": 24000
+      },
+      "review-diff": {
+        "facets": ["changes", "symbols", "relations"],
+        "maxOutputBytes": 12800
+      },
+      "review-grounded": {
+        "facets": ["changes", "symbols", "relations", "source", "tests"],
+        "maxOutputBytes": 19200
       }
     },
     "defaults": {
-      "spec": "orientation",
-      "spec-review": "orientation",
-      "plan": "implementation",
-      "plan-review": "impact",
-      "build": "implementation",
-      "build-review": "impact",
+      "spec": "spec-survey",
+      "spec-review": "spec-deep",
+      "plan": "plan-impact",
+      "plan-review": "review-diff",
+      "build": "build-work",
+      "build-review": "review-grounded",
       "ship": "readiness"
     }
   },
