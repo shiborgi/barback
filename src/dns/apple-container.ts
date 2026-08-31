@@ -111,7 +111,10 @@ export class AppleContainerCli implements AppleContainerAdapter {
       const item = inspected[0];
       if (!item) return null;
       const status = item.status as
-        | { networks?: Array<{ ipv4Address?: string; hostAddress?: string }>; state?: string }
+        | {
+            networks?: Array<{ ipv4Address?: string; hostAddress?: string; ipv4Gateway?: string }>;
+            state?: string;
+          }
         | undefined;
       const configuration = item.configuration as
         | {
@@ -132,7 +135,10 @@ export class AppleContainerCli implements AppleContainerAdapter {
           .map((entry) => entry.ipv4Address?.split("/")[0])
           .filter((value): value is string => Boolean(value)),
         hostAddress:
-          (status?.networks ?? []).find((entry) => Boolean(entry.hostAddress))?.hostAddress ?? "",
+          (status?.networks ?? []).find((entry) => Boolean(entry.hostAddress || entry.ipv4Gateway))
+            ?.hostAddress ??
+          (status?.networks ?? []).find((entry) => Boolean(entry.ipv4Gateway))?.ipv4Gateway ??
+          "",
         labels: configuration?.labels ?? {},
         publishedPorts: (configuration?.publishedPorts ?? []).flatMap((port) => {
           const hostPort = number(port.hostPort);

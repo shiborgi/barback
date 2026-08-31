@@ -368,6 +368,35 @@ export async function persistDnsState(root: string, state: DnsState): Promise<st
   return atomicWriteJson(root, "state.json", parsed);
 }
 
+export interface DnsStatusSnapshot {
+  stackId?: string;
+  dnsGeneration?: string | null;
+  resolver?: { health?: boolean };
+  lease?: { valid?: boolean };
+  lastSuccessfulReconciliation?: string | null;
+}
+
+export async function loadDnsStatus(root = defaultStateRoot()): Promise<DnsStatusSnapshot | null> {
+  const directory = requireAbsolute(root);
+  await rejectSymlinkPath(directory);
+  const directoryStat = await existingPath(directory);
+  if (!directoryStat) return null;
+  if (!directoryStat.isDirectory()) return null;
+  const path = join(directory, "status.json");
+  await rejectSymlinkPath(path);
+  const stat = await existingPath(path);
+  if (!stat || stat.isSymbolicLink()) return null;
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export async function persistDnsStatus(root: string, status: unknown): Promise<string> {
+  return atomicWriteJson(root, "status.json", status);
+}
+
 export function validateClientConfig(value: unknown, now = new Date()): ClientConfig {
   const config = clientConfigSchema.parse(value);
   if (!Number.isFinite(now.getTime()))

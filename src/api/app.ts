@@ -6,6 +6,7 @@ import { GatewayError, normalizeError } from "../core/errors.ts";
 import { executeChat } from "../core/pipeline.ts";
 import type { AppVariables, RequestContext } from "../core/request-context.ts";
 import type { Runtime } from "../core/runtime.ts";
+import { loadDnsStatus } from "../dns/state.ts";
 import { parseChatRequest } from "./chat-completions.ts";
 
 type AppEnv = { Variables: AppVariables };
@@ -76,21 +77,28 @@ export function createApp(runtime: Runtime) {
   });
   app.get("/health/live", (c) => c.json({ status: "live" }));
   app.get("/health/ready", async (c) => {
+    const status = await loadDnsStatus();
+    const dnsValid = Boolean(status?.lease?.valid && status?.resolver?.health);
     const store = await runtime.store.ping();
     const mcp = runtime.mcpRegistry.ready();
     const providerChecks = await Promise.all(
       [...runtime.providers.values()].map((provider) => provider.ready(c.req.raw.signal)),
     );
     const provider = providerChecks.every(Boolean);
-    const ready = store && mcp && provider;
+    const ready = dnsValid && store && mcp && provider;
     return c.json(
-      { status: ready ? "ready" : "not_ready", dependencies: { store, mcp, provider } },
+      {
+        status: ready ? "ready" : "not_ready",
+        dependencies: { dns: dnsValid, store, mcp, provider },
+      },
       ready ? 200 : 503,
     );
   });
   app.get("/health", async (c) => {
+    const status = await loadDnsStatus();
+    const dnsValid = Boolean(status?.lease?.valid && status?.resolver?.health);
     const store = await runtime.store.ping();
-    const ready = store && runtime.mcpRegistry.ready();
+    const ready = dnsValid && store && runtime.mcpRegistry.ready();
     return c.json({ status: ready ? "ready" : "not_ready" }, ready ? 200 : 503);
   });
   app.use(

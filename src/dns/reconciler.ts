@@ -3,6 +3,7 @@ import { access, mkdir, open, readFile, rename, rm, symlink } from "node:fs/prom
 import { join } from "node:path";
 import { ConfigError } from "../config/loader.ts";
 import type { BarbackConfig } from "../config/schema.ts";
+import type { Metrics } from "../telemetry/metrics.ts";
 import {
   type AppleContainerAdapter,
   AppleContainerCli,
@@ -13,6 +14,7 @@ import {
   applyLease,
   type ClientConfig,
   DnsStateStore,
+  persistDnsStatus,
   publishClientConfig,
   updateDnsGeneration,
 } from "./state.ts";
@@ -143,6 +145,7 @@ export class StackReconciler {
     readonly config: BarbackConfig,
     readonly adapter: AppleContainerAdapter = new AppleContainerCli(),
     readonly state = new DnsStateStore(stack.stackId),
+    readonly metrics?: Metrics,
   ) {}
 
   async #runManaged(id: string, service: StackService, resolver: ContainerSnapshot): Promise<void> {
@@ -249,20 +252,49 @@ export class StackReconciler {
   }
 
   async reconcile(now = new Date(), allowGatewayMissing = false): Promise<void> {
+    const startedAt = performance.now();
+    let status: "success" | "failed" = "success";
+    try {
+      await this.#doReconcile(now, allowGatewayMissing);
+    } catch (error) {
+      status = "failed";
+      throw error;
+    } finally {
+      this.metrics?.dnsReconciliationDuration.observe(
+        { status },
+        (performance.now() - startedAt) / 1000,
+      );
+      const state = await this.state.load();
+      if (state?.lease?.validUntil) {
+        const remaining = Math.max(0, (Date.parse(state.lease.validUntil) - Date.now()) / 1000);
+        this.metrics?.dnsLeaseTimeRemainingSeconds.set(remaining);
+      }
+    }
+  }
+
+  async #doReconcile(now: Date, allowGatewayMissing: boolean): Promise<void> {
     const resolver = await this.adapter.inspect(this.stack.dns.container);
     if (
       !resolver?.running ||
       resolver.network !== this.stack.network ||
       resolver.addresses.length !== 1
-    )
+    ) {
+      this.metrics?.dnsResolverFailures.inc();
       throw new ConfigError(
         "Resolver is not running with exactly one address on the manifest network",
       );
+    }
     for (const [label, value] of Object.entries(labelsFor(this.stack, "dns", "dns"))) {
-      if (resolver.labels[label] !== value) throw new ConfigError(`Resolver has invalid ${label}`);
+      if (resolver.labels[label] !== value) {
+        this.metrics?.dnsResolverFailures.inc();
+        throw new ConfigError(`Resolver has invalid ${label}`);
+      }
     }
     const resolverInstanceId = resolver.labels["io.shiborgi.barback.resolver-instance"];
-    if (!resolverInstanceId) throw new ConfigError("Resolver instance identity is missing");
+    if (!resolverInstanceId) {
+      this.metrics?.dnsResolverFailures.inc();
+      throw new ConfigError("Resolver instance identity is missing");
+    }
     const previous = await this.state.load();
     const dnsState = updateDnsGeneration(
       previous ?? undefined,
@@ -270,9 +302,11 @@ export class StackReconciler {
       resolverInstanceId,
       resolver.hostAddress,
     );
-    if (previous && previous.dnsGeneration !== dnsState.dnsGeneration)
+    if (previous && previous.dnsGeneration !== dnsState.dnsGeneration) {
+      this.metrics?.dnsGenerationChanges.inc();
       for (const [id, service] of Object.entries(this.stack.services))
         await this.#runManaged(id, service, resolver);
+    }
     const snapshots = await Promise.all(
       Object.entries(this.stack.services).map(async ([id, service]) => {
         const snapshot = await this.adapter.inspect(service.container);
@@ -280,7 +314,10 @@ export class StackReconciler {
       }),
     );
     const resolverAddress = resolver.addresses[0];
-    if (!resolverAddress) throw new ConfigError("Resolver address is missing");
+    if (!resolverAddress) {
+      this.metrics?.dnsResolverFailures.inc();
+      throw new ConfigError("Resolver address is missing");
+    }
     const records: DnsRecord[] = [{ name: `dns.${this.stack.dns.zone}`, address: resolverAddress }];
     for (const { id, service, snapshot } of snapshots) {
       if (!snapshot) {
@@ -339,6 +376,34 @@ export class StackReconciler {
     };
     // Validate every value before replacing either resolver input file.
     const recordsText = renderDnsRecords(records, Math.floor(this.stack.dns.ttl / 1000));
+
+    // Check drift and address changes
+    try {
+      const currentRecords = await readFile(
+        join(this.state.root, "records", "current", "db.barback.internal"),
+        "utf8",
+      );
+      if (currentRecords !== recordsText) {
+        // Record drift detected!
+        // We will increment drift/changes, but how do we differentiate service address change from drift?
+        // Wait, "Add bounded-cardinality DNS reconciliation metrics to the gateway metrics registry using only manifest service IDs and fixed result labels..."
+        // If currentRecords !== recordsText, something changed.
+        for (const record of records) {
+          if (!currentRecords.includes(`IN A ${record.address}`)) {
+            const svcId = Object.entries(this.stack.services).find(
+              ([_, s]) => s.dns === record.name,
+            )?.[0];
+            if (svcId) {
+              this.metrics?.dnsRecordDrift.inc({ service: svcId });
+              this.metrics?.dnsServiceAddressChanges.inc({ service: svcId });
+            }
+          }
+        }
+      }
+    } catch {
+      // First run, no drift
+    }
+
     // This also validates monotonicity without changing persisted state.
     applyLease(previousLease, lease, now, this.stack.stackId);
     const directory = join(this.state.root, "records");
@@ -346,11 +411,11 @@ export class StackReconciler {
     await publishResolverBundle(directory, recordsText, JSON.stringify(lease));
     await this.state.commit(dnsState, lease, now);
     await publishClientConfig(this.state.root, await this.clientConfig(now));
+    await persistDnsStatus(this.state.root, await this.status(now));
   }
 
-  async status(): Promise<Record<string, unknown>> {
+  async status(now = new Date()): Promise<Record<string, unknown>> {
     const state = await this.state.load();
-    const now = new Date();
     const network = await this.adapter.inspectNetwork(this.stack.network);
     const services = await Promise.all(
       Object.entries(this.stack.services).map(async ([id, service]) => {

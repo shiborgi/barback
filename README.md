@@ -102,7 +102,7 @@ bun run reconcile -- up
 
 The default `valkey/valkey:8-alpine` image does not include Valkey Search. For this setup, set `storage.valkey.vectorSearch` and `cache.semantic.enabled` to `false` in `barback.yaml`, or use a Valkey image with Search support.
 
-If `container build` reports that Rosetta is not installed, set `rosetta = false` under `[build]` in `~/.config/container/config.toml`, restart Apple Container, and run the stack script again.
+If `container build` reports that Rosetta is not installed, set `rosetta = false` under `[build]` in `~/.config/container/config.toml`, restart Apple Container, and run the reconciler again.
 
 Apple Container has no restart policy. Use `launchd` to supervise the reconciler instead of `keepalive.sh`; the foreground reconciler is what keeps the resolver lease valid and refreshes records after independently recreated services receive a new address.
 
@@ -121,14 +121,14 @@ launchd (supervised foreground process):
     <string>run</string>
     <string>reconcile</string>
     <string>--</string>
-    <string>reconcile</string>
+    <string>supervise</string>
   </array>
   <key>WorkingDirectory</key>
   <string>/Users/server/Development/shiborgi/barback</string>
   <key>RunAtLoad</key>
   <true/>
-  <key>StartInterval</key>
-  <integer>10</integer>
+  <key>KeepAlive</key>
+  <true/>
 </dict>
 </plist>
 ```

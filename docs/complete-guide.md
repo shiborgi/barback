@@ -603,34 +603,33 @@ The YAML is not copied into the image. It is mounted read-only at `/app/barback.
 
 ### 13.2 Shared network
 
-The [`scripts/start-barback.sh`](../scripts/start-barback.sh) script runs the gateway and Valkey on the same Apple Container network, `default` by default.
+The managed stack uses the `barback` NAT network and a dedicated CoreDNS resolver to discover services by their FQDNs.
 
-Apple Container should not be treated as if bare Docker Compose service-name discovery were always available. The script therefore:
-
-1. starts or reuses `barback-valkey`;
-2. reads its internal IPv4 address with `container inspect`;
-3. injects `VALKEY_URL=redis://<internal-ip>:6379` into the gateway;
-4. starts `barback-gateway` on the same network;
-5. tests `PING` from inside the gateway container.
+1. `barback-dns` resolves `barback.internal` requests.
+2. The gateway is configured with canonical URLs like `VALKEY_URL=redis://valkey.barback.internal:6379`.
+3. The reconciler updates the DNS records when containers start or change IP addresses.
 
 ```mermaid
 flowchart LR
     Host[macOS host]
-    Script[start-barback.sh]
-    Network[Apple Container\ndefault network]
-    Valkey[barback-valkey\nValkey 8]
+    Reconciler[barback-reconcile]
+    Network[Apple Container\nbarback network]
+    DNS[barback-dns\nCoreDNS]
+    Valkey[barback-valkey\nValkey]
     Volume[(barback-valkey-data)]
     Gateway[barback-gateway\nBun + Hono]
     Public[127.0.0.1:8080]
     Admin[127.0.0.1:8081]
     Ollama[Ollama Cloud]
 
-    Host --> Script
-    Script --> Network
+    Host --> Reconciler
+    Reconciler --> Network
+    Reconciler --> DNS
+    Network --> DNS
     Network --> Valkey
     Network --> Gateway
     Valkey --> Volume
-    Gateway -->|VALKEY_URL=redis://IP:6379| Valkey
+    Gateway -->|redis://valkey.barback.internal:6379| Valkey
     Host --> Public
     Host --> Admin
     Gateway --> Public
@@ -638,7 +637,7 @@ flowchart LR
     Gateway -->|HTTPS| Ollama
 ```
 
-Valkey is not published to the host when started by the stack script. Only the gateway HTTP ports are published.
+Valkey and the DNS server are not published to the host. Only the gateway HTTP ports are published.
 
 ### 13.3 Prerequisites
 
@@ -678,10 +677,10 @@ Edit `.env` and provide a valid Ollama key and model names. For the base Valkey 
 Start the stack:
 
 ```sh
-./scripts/start-barback.sh
+bun run reconcile up
 ```
 
-The script builds `barback:local`, creates or reuses Valkey, mounts the YAML, forces gateway listeners to `0.0.0.0` inside the container, and publishes the gateway ports on host loopback.
+The reconciler creates the network, builds the gateway image, starts Valkey and the DNS server, and then starts the gateway container with its required mounts and environment variables.
 
 Check containers:
 
@@ -693,7 +692,7 @@ Check internal communication:
 
 ```sh
 container exec barback-gateway \
-  bun -e 'import Redis from "ioredis"; const r = new Redis(process.env.VALKEY_URL); console.log(await r.ping()); await r.quit();'
+  bun -e 'import Redis from "ioredis"; const r = new Redis("redis://valkey.barback.internal:6379"); console.log(await r.ping()); await r.quit();'
 ```
 
 The expected output is `PONG`.
@@ -779,7 +778,7 @@ These limitations reflect the current implementation and should be considered be
 - MCP calls do not use usage windows.
 - Reload swaps runtime resources but does not recreate HTTP listeners.
 - The Dockerfile does not include external executables required by `stdio` MCP upstreams.
-- Valkey's internal IP can change after recreation; the stack script detects a failed connection and recreates the gateway.
+- Valkey's internal IP can change after recreation; the reconciler automatically updates the DNS records without recreating the gateway.
 - Host access to published ports depends on macOS Local Network permissions.
 
 ## 16. Example Request

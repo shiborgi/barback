@@ -22,7 +22,7 @@ container run --rm \
 
 Inside a container, configure the server hosts as `0.0.0.0`. Point `VALKEY_URL` at a reachable Valkey address rather than container loopback.
 
-For the convergent managed stack, use the reconciler rather than the legacy IP-injection scripts:
+For the convergent managed stack, use the reconciler:
 
 ```sh
 cp config/barback.example.yaml barback.yaml

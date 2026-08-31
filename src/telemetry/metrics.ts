@@ -57,6 +57,39 @@ export class Metrics {
     labelNames: ["server", "tool", "status"] as const,
     registers: [this.registry],
   });
+  readonly dnsReconciliationDuration = new Histogram({
+    name: "barback_dns_reconciliation_duration_seconds",
+    help: "DNS reconciliation duration",
+    labelNames: ["status"] as const,
+    registers: [this.registry],
+  });
+  readonly dnsRecordDrift = new Counter({
+    name: "barback_dns_record_drift_total",
+    help: "DNS record drift detected",
+    labelNames: ["service"] as const,
+    registers: [this.registry],
+  });
+  readonly dnsGenerationChanges = new Counter({
+    name: "barback_dns_generation_changes_total",
+    help: "DNS generation changes",
+    registers: [this.registry],
+  });
+  readonly dnsResolverFailures = new Counter({
+    name: "barback_dns_resolver_failures_total",
+    help: "DNS resolver failures",
+    registers: [this.registry],
+  });
+  readonly dnsServiceAddressChanges = new Counter({
+    name: "barback_dns_service_address_changes_total",
+    help: "DNS service address changes",
+    labelNames: ["service"] as const,
+    registers: [this.registry],
+  });
+  readonly dnsLeaseTimeRemainingSeconds = new Gauge({
+    name: "barback_dns_lease_time_remaining_seconds",
+    help: "DNS lease time remaining",
+    registers: [this.registry],
+  });
 
   constructor() {
     collectDefaultMetrics({ register: this.registry, prefix: "barback_process_" });
