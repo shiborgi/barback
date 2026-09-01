@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { authenticate, hasScope } from "../auth/client-key.ts";
+import { authenticate, authenticateHostRelay, hasScope } from "../auth/client-key.ts";
 import type { ClientConfig } from "../config/schema.ts";
 import { GatewayError, normalizeError } from "../core/errors.ts";
 import { executeChat } from "../core/pipeline.ts";
@@ -11,11 +11,11 @@ import { parseChatRequest } from "./chat-completions.ts";
 
 type AppEnv = { Variables: AppVariables };
 
-function bearerClient(request: Request, runtime: Runtime): ClientConfig {
+function bearerClient(request: Request, runtime: Runtime, sourceIp?: string): ClientConfig {
   const client = authenticate(
     request.headers.get("authorization") ?? undefined,
     runtime.configStore.get(),
-  );
+  ) ?? authenticateHostRelay(sourceIp, runtime.configStore.get());
   if (!client)
     throw new GatewayError(
       "Invalid client credential",
@@ -59,7 +59,7 @@ function requestId(request: Request) {
   return supplied && /^[A-Za-z0-9_.:-]{1,128}$/.test(supplied) ? supplied : crypto.randomUUID();
 }
 
-export function createApp(runtime: Runtime) {
+export function createApp(runtime: Runtime, sourceIp?: (request: Request) => string | undefined) {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
     c.set("requestId", requestId(c.req.raw));
@@ -120,7 +120,7 @@ export function createApp(runtime: Runtime) {
   app.use("/mcp", bodyLimit({ maxSize: runtime.configStore.get().server.requestBodyLimit }));
 
   app.get("/v1/models", (c) => {
-    const client = bearerClient(c.req.raw, runtime);
+    const client = bearerClient(c.req.raw, runtime, sourceIp?.(c.req.raw));
     requireScope(client, "llm:models");
     const policy = runtime.configStore.get().policies[client.policy];
     const models = Object.entries(runtime.configStore.get().models)
@@ -133,7 +133,7 @@ export function createApp(runtime: Runtime) {
   });
 
   app.post("/v1/chat/completions", async (c) => {
-    const client = bearerClient(c.req.raw, runtime);
+    const client = bearerClient(c.req.raw, runtime, sourceIp?.(c.req.raw));
     requireScope(client, "llm:invoke");
     const ctx = context(c.req.raw, runtime, client, c.get("requestId"));
     c.set("requestContext", ctx);
@@ -156,7 +156,7 @@ export function createApp(runtime: Runtime) {
     if (origin && !allowed.includes(origin)) {
       throw new GatewayError("Origin is not allowed", 403, "authorization_error", "origin_denied");
     }
-    const client = bearerClient(c.req.raw, runtime);
+    const client = bearerClient(c.req.raw, runtime, sourceIp?.(c.req.raw));
     const cloned = c.req.raw.clone();
     const rpc = (await cloned.json()) as { method?: string };
     requireScope(client, rpc.method === "tools/call" ? "mcp:call" : "mcp:list");

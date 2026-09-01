@@ -86,11 +86,16 @@ const dnsSchema = strictObject({
   lease: duration,
 });
 
+const clientConfigSchema = strictObject({
+  credentialMode: z.enum(["host-relay", "onecli-proxy"]).default("onecli-proxy"),
+});
+
 export const stackSchema = strictObject({
   version: z.literal(1),
   stackId: z.string().regex(serviceIdPattern),
   network: z.string().regex(containerNamePattern),
   networkMode: z.literal("nat").default("nat"),
+  clientConfig: clientConfigSchema.default({ credentialMode: "onecli-proxy" }),
   dns: dnsSchema,
   services: z.record(z.string().regex(serviceIdPattern), serviceSchema),
 }).superRefine((stack, ctx) => {

@@ -85,14 +85,20 @@ describe("DNS control-plane state", () => {
         dnsServers: ["192.0.2.10"],
         dnsSearch: ["barback.internal"],
         dnsGeneration: "generation-1",
+        gatewayAddress: "192.0.2.20",
+        egressGeneration: "egress-generation-1",
         generatedAt: now.toISOString(),
         validUntil: "2026-08-29T12:00:30.000Z",
         apiBaseUrl: "http://barback.internal:8080/v1",
         mcpUrl: "http://barback.internal:8080/mcp",
-        credentialMode: "onecli-proxy",
+        hostProbeUrl: "http://192.0.2.20:8080/health/live",
+        credentialMode: "host-relay",
       });
       const path = await publishClientConfig(root, config);
       expect(JSON.parse(await readFile(path, "utf8"))).toEqual(config);
+      expect(
+        clientConfigSchema.parse({ ...config, credentialMode: "onecli-proxy" }).credentialMode,
+      ).toBe("onecli-proxy");
       expect((await lstat(path)).mode & 0o077).toBe(0);
       await symlink(root, join(root, "link"));
       await expect(publishClientConfig(join(root, "link"), config)).rejects.toThrow(/symlink/);
@@ -110,10 +116,13 @@ describe("DNS control-plane state", () => {
       dnsServers: ["192.0.2.10"],
       dnsSearch: ["barback.internal"],
       dnsGeneration: "generation-1",
+      gatewayAddress: "192.0.2.20",
+      egressGeneration: "egress-generation-1",
       generatedAt: now.toISOString(),
       validUntil: "2026-08-29T11:59:59.000Z",
       apiBaseUrl: "http://192.0.2.10:8080/v1",
       mcpUrl: "http://barback.internal:8080/mcp",
+      hostProbeUrl: "http://192.0.2.20:8080/health/live",
       credentialMode: "onecli-proxy",
     };
     expect(() => clientConfigSchema.parse(input)).toThrow(/IP literal/);

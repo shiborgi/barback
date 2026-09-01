@@ -459,7 +459,13 @@ export class StackReconciler {
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await publishResolverBundle(directory, recordsText, JSON.stringify(lease));
     await this.state.commit(dnsState, lease, now);
-    await publishClientConfig(this.state.root, await this.clientConfig(now));
+    if (allowGatewayMissing) {
+      // A bootstrap DNS bundle may intentionally use a loopback placeholder
+      // before the gateway is started. Never publish it as an agent allowlist.
+      await rm(join(this.state.root, "client-config.json"), { force: true });
+    } else {
+      await publishClientConfig(this.state.root, await this.clientConfig(now));
+    }
     await persistDnsStatus(this.state.root, await this.status(now));
   }
 
@@ -528,6 +534,14 @@ export class StackReconciler {
     const state = await this.state.load();
     if (!state?.lease || Date.parse(state.lease.validUntil) <= now.getTime())
       throw new ConfigError("No active DNS lease");
+    const gatewayService = this.stack.services.barback;
+    if (!gatewayService || gatewayService.role !== "gateway")
+      throw new ConfigError("Gateway is missing from the manifest");
+    const gateway = await this.adapter.inspect(gatewayService.container);
+    if (!gateway || !gateway.running || gateway.network !== this.stack.network || gateway.addresses.length !== 1)
+      throw new ConfigError("Gateway address is unavailable");
+    const gatewayAddress = gateway.addresses[0];
+    if (!gatewayAddress) throw new ConfigError("Gateway address is missing");
     const hostGateway = state.resolverHostAddress;
     if (!hostGateway) throw new ConfigError("Resolver address is missing");
     return {
@@ -538,11 +552,16 @@ export class StackReconciler {
       dnsServers: state.resolverAddresses,
       dnsSearch: [this.stack.dns.zone],
       dnsGeneration: state.dnsGeneration,
+      gatewayAddress,
+      egressGeneration: createHash("sha256")
+        .update(`${state.dnsGeneration}:${gatewayAddress}:${gatewayService.port}`)
+        .digest("hex"),
       generatedAt: now.toISOString(),
       validUntil: state.lease.validUntil,
       apiBaseUrl: `http://${this.stack.dns.zone}:8080/v1`,
       mcpUrl: `http://${this.stack.dns.zone}:8080/mcp`,
-      credentialMode: "onecli-proxy",
+      hostProbeUrl: `http://${gatewayAddress}:8080/health/live`,
+      credentialMode: this.stack.clientConfig.credentialMode,
     };
   }
 

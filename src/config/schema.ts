@@ -137,6 +137,12 @@ export const configSchema = z
           }),
         )
         .min(1),
+      hostRelay: z
+        .object({
+          client: z.string().min(1),
+          trustedCidrs: z.array(z.string().regex(/^\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}$/)).min(1),
+        })
+        .optional(),
     }),
     providers: z.record(z.string(), providerSchema),
     models: z.record(z.string(), modelSchema),
@@ -223,6 +229,13 @@ export const configSchema = z
         });
       }
       clientIds.add(client.id);
+    }
+    if (config.auth.hostRelay && !clientIds.has(config.auth.hostRelay.client)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["auth", "hostRelay", "client"],
+        message: "must name an auth client",
+      });
     }
     for (const [alias, model] of Object.entries(config.models)) {
       if (!config.providers[model.provider]) {

@@ -34,6 +34,62 @@ function mapContent(message: GatewayMessage) {
   return { content: text.join("\n"), ...(images.length ? { images } : {}) };
 }
 
+function parseToolArguments(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string" && value.length > 0) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function mapToolCalls(calls: Array<Record<string, unknown>> | undefined) {
+  if (!calls) return undefined;
+  return calls.map((call) => {
+    const fn =
+      call.function && typeof call.function === "object"
+        ? (call.function as Record<string, unknown>)
+        : call;
+    const name = typeof fn.name === "string" ? fn.name : typeof call.name === "string" ? call.name : "";
+    return {
+      function: {
+        name,
+        arguments: parseToolArguments(fn.arguments ?? call.arguments),
+      },
+    };
+  });
+}
+
+function mapTools(tools: GatewayChatRequest["tools"]) {
+  if (!tools) return undefined;
+  return tools.flatMap((tool) => {
+    const fn =
+      tool.function && typeof tool.function === "object"
+        ? (tool.function as Record<string, unknown>)
+        : undefined;
+    const name = typeof fn?.name === "string" ? fn.name : typeof tool.name === "string" ? tool.name : "";
+    if (!name) return [];
+    return [
+      {
+        type: "function",
+        function: {
+          name,
+          ...(typeof fn?.description === "string" ? { description: fn.description } : {}),
+          ...(fn?.parameters && typeof fn.parameters === "object" ? { parameters: fn.parameters } : {}),
+        },
+      },
+    ];
+  });
+}
+
 function mapResponseFormat(format: GatewayChatRequest["response_format"]): unknown {
   if (!format) return undefined;
   if (format.type === "json_object") return "json";
@@ -92,15 +148,34 @@ export function toOllamaRequest(request: GatewayChatRequest, upstreamModel: stri
     options.frequency_penalty = request.frequency_penalty;
   if (request.presence_penalty !== undefined) options.presence_penalty = request.presence_penalty;
 
-  return {
-    model: upstreamModel,
-    messages: request.messages.map((message) => ({
+  const namesByCallId = new Map<string, string>();
+  const messages = request.messages.map((message) => {
+    const toolCalls = mapToolCalls(message.tool_calls);
+    if (toolCalls) {
+      for (const [index, call] of (message.tool_calls ?? []).entries()) {
+        const id = typeof call.id === "string" ? call.id : undefined;
+        const name = toolCalls[index]?.function.name;
+        if (id && name) namesByCallId.set(id, name);
+      }
+    }
+    const mapped: Record<string, unknown> = {
       role: message.role,
       ...mapContent(message),
-      ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
-    })),
+      ...(toolCalls ? { tool_calls: toolCalls } : {}),
+    };
+    if (message.role === "tool") {
+      const toolName =
+        message.name ?? (message.tool_call_id ? namesByCallId.get(message.tool_call_id) : undefined);
+      if (toolName) mapped.tool_name = toolName;
+    }
+    return mapped;
+  });
+
+  return {
+    model: upstreamModel,
+    messages,
     stream: request.stream,
-    ...(request.tools ? { tools: request.tools } : {}),
+    ...(request.tools ? { tools: mapTools(request.tools) } : {}),
     ...(request.response_format ? { format: mapResponseFormat(request.response_format) } : {}),
     ...(request.reasoning_effort && request.reasoning_effort !== "none"
       ? { think: request.reasoning_effort }

@@ -123,11 +123,17 @@ export const clientConfigSchema = strictObject({
   dnsServers: z.array(ipAddress).min(1),
   dnsSearch: z.array(z.string().regex(zonePattern)).min(1),
   dnsGeneration: z.string().min(1),
+  // The application keeps its stable DNS name. This address exists solely for
+  // the session firewall bootstrap, which cannot safely allow an entire NAT
+  // subnet just to reach the gateway.
+  gatewayAddress: ipAddress,
+  egressGeneration: z.string().min(1),
   generatedAt: timestamp,
   validUntil: timestamp,
   apiBaseUrl: applicationUrl,
   mcpUrl: applicationUrl,
-  credentialMode: z.literal("onecli-proxy"),
+  hostProbeUrl: z.url(),
+  credentialMode: z.enum(["host-relay", "onecli-proxy"]),
 }).superRefine((config, ctx) => {
   if (!config.dnsSearch.includes("barback.internal")) {
     ctx.addIssue({ code: "custom", path: ["dnsSearch"], message: "must include barback.internal" });
@@ -137,6 +143,7 @@ export const clientConfigSchema = strictObject({
   }
   const api = new URL(config.apiBaseUrl);
   const mcp = new URL(config.mcpUrl);
+  const probe = new URL(config.hostProbeUrl);
   if (api.pathname !== "/v1" || api.port !== "8080") {
     ctx.addIssue({
       code: "custom",
@@ -149,6 +156,13 @@ export const clientConfigSchema = strictObject({
       code: "custom",
       path: ["mcpUrl"],
       message: "must be http://barback.internal:8080/mcp",
+    });
+  }
+  if (probe.hostname !== config.gatewayAddress || probe.pathname !== "/health/live" || probe.port !== "8080") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["hostProbeUrl"],
+      message: "must target gatewayAddress on http port 8080 /health/live",
     });
   }
   if (Date.parse(config.validUntil) <= Date.parse(config.generatedAt)) {

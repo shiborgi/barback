@@ -9,10 +9,12 @@ const runtime = await Runtime.create(configStore);
 const telemetry = await startTelemetry(configStore.get().telemetry);
 const config = configStore.get();
 
-const server = Bun.serve({
+let server: ReturnType<typeof Bun.serve>;
+const app = createApp(runtime, (request) => server.requestIP(request)?.address);
+server = Bun.serve({
   hostname: config.server.host,
   port: config.server.port,
-  fetch: createApp(runtime).fetch,
+  fetch: app.fetch,
 });
 const admin = Bun.serve({
   hostname: config.server.admin.host,

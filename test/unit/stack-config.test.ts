@@ -67,7 +67,19 @@ describe("DNS stack contract", () => {
   test("loads the committed non-secret stack example", async () => {
     const stack = await loadStack("config/stack.example.yaml");
     expect(stack.networkMode).toBe("nat");
+    expect(stack.clientConfig.credentialMode).toBe("onecli-proxy");
     expect(stack.services.google?.dns).toBe("google.mcp.barback.internal");
+  });
+
+  test("supports host relay while preserving the OneCLI proxy default", () => {
+    const onecliStack = stackSchema.parse(stackInput());
+    const hostRelayStack = stackSchema.parse({
+      ...stackInput(),
+      clientConfig: { credentialMode: "host-relay" },
+    });
+
+    expect(onecliStack.clientConfig.credentialMode).toBe("onecli-proxy");
+    expect(hostRelayStack.clientConfig.credentialMode).toBe("host-relay");
   });
 
   test("parses a complete managed stack and supports declarative MCP additions", () => {

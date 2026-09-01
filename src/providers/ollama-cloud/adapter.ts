@@ -91,8 +91,11 @@ export class OllamaCloudAdapter implements LlmProvider {
               : response.status >= 500
                 ? "provider_unavailable_error"
                 : "provider_error";
+          const detail = (await response.text()).replace(/\s+/g, " ").slice(0, 300);
           throw new GatewayError(
-            `Ollama Cloud returned HTTP ${response.status}`,
+            detail
+              ? `Ollama Cloud returned HTTP ${response.status}: ${detail}`
+              : `Ollama Cloud returned HTTP ${response.status}`,
             response.status,
             category,
             `provider_http_${response.status}`,

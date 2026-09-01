@@ -1,11 +1,27 @@
 import type { GatewayChatResponse, GatewayStreamEvent, TokenUsage } from "../providers/provider.ts";
 
-function toolCalls(calls: Array<Record<string, unknown>> | undefined) {
-  return calls?.map((call, index) => ({
-    id: typeof call.id === "string" ? call.id : `call_${index}`,
-    type: "function",
-    function: call.function,
-  }));
+function functionArguments(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === undefined) return "";
+  return JSON.stringify(value);
+}
+
+function toolCalls(calls: Array<Record<string, unknown>> | undefined, streaming = false) {
+  return calls?.map((call, index) => {
+    const fn =
+      call.function && typeof call.function === "object"
+        ? (call.function as Record<string, unknown>)
+        : {};
+    return {
+      ...(streaming ? { index: typeof call.index === "number" ? call.index : index } : {}),
+      id: typeof call.id === "string" ? call.id : `call_${index}`,
+      type: "function",
+      function: {
+        name: typeof fn.name === "string" ? fn.name : "",
+        arguments: functionArguments(fn.arguments),
+      },
+    };
+  });
 }
 
 export function openAiUsage(usage: TokenUsage) {
@@ -49,7 +65,7 @@ export function streamChunk(event: GatewayStreamEvent, first: boolean, includeUs
     ...(first ? { role: "assistant" } : {}),
     ...(event.content !== undefined ? { content: event.content } : {}),
     ...(event.reasoning !== undefined ? { reasoning_content: event.reasoning } : {}),
-    ...(event.toolCalls ? { tool_calls: toolCalls(event.toolCalls) } : {}),
+    ...(event.toolCalls ? { tool_calls: toolCalls(event.toolCalls, true) } : {}),
   };
   return {
     id: event.id,

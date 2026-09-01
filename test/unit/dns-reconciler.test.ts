@@ -11,6 +11,7 @@ const stack = parseStack({
   version: 1,
   stackId: "barback-local",
   network: "barback",
+  clientConfig: { credentialMode: "host-relay" },
   dns: {
     zone: "barback.internal",
     container: "barback-dns",
@@ -262,6 +263,18 @@ describe("manifest reconciler", () => {
       );
       await reconciler.reconcile(new Date("2026-08-30T12:00:00.000Z"));
       const first = await reconciler.clientConfig(new Date("2026-08-30T12:00:01.000Z"));
+      expect(first).toMatchObject({
+        network: "barback",
+        hostGateway: "192.0.2.1",
+        dnsServers: ["192.0.2.2"],
+        dnsSearch: ["barback.internal"],
+        gatewayAddress: "192.0.2.3",
+        apiBaseUrl: "http://barback.internal:8080/v1",
+        mcpUrl: "http://barback.internal:8080/mcp",
+        hostProbeUrl: "http://192.0.2.3:8080/health/live",
+        credentialMode: "host-relay",
+      });
+      expect(first).not.toHaveProperty("token");
       adapter.items.set(
         "barback-dns",
         snapshot("resolver-a", "192.0.2.9", {
