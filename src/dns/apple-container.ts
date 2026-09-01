@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { ConfigError } from "../config/loader.ts";
 
 export interface ContainerSnapshot {
@@ -29,7 +30,6 @@ export interface AppleContainerAdapter {
     dnsSearch?: string[];
     publishedPorts?: Array<{ hostIp: string; hostPort: number; containerPort: number }>;
   }): Promise<void>;
-  probeHttp(address: string, port: number, path: string): Promise<void>;
   resolveFrom(container: string, hostname: string, expectedAddress: string): Promise<void>;
   probeFrom(container: string, hostname: string, port: number, path?: string): Promise<void>;
   exec(name: string, command: string[]): Promise<void>;
@@ -122,6 +122,7 @@ export class AppleContainerCli implements AppleContainerAdapter {
             labels?: Record<string, string>;
             publishedPorts?: Array<{
               hostIp?: string;
+              hostAddress?: string;
               hostPort?: unknown;
               containerPort?: unknown;
             }>;
@@ -144,7 +145,7 @@ export class AppleContainerCli implements AppleContainerAdapter {
           const hostPort = number(port.hostPort);
           const containerPort = number(port.containerPort);
           return hostPort !== undefined && containerPort !== undefined
-            ? [{ hostIp: port.hostIp ?? "", hostPort, containerPort }]
+            ? [{ hostIp: port.hostIp ?? port.hostAddress ?? "", hostPort, containerPort }]
             : [];
         }),
       };
@@ -162,22 +163,20 @@ export class AppleContainerCli implements AppleContainerAdapter {
     for (const [key, value] of Object.entries(input.labels))
       args.push("--label", `${key}=${value}`);
     for (const mount of input.mounts ?? [])
-      args.push("--volume", `${mount.source}:${mount.target}${mount.readOnly ? ":ro" : ""}`);
+      args.push(
+        "--volume",
+        `${resolve(mount.source)}:${mount.target}${mount.readOnly ? ":ro" : ""}`,
+      );
+    if (input.envFile) args.push("--env-file", input.envFile);
+    // Manifest values are the stack's canonical endpoints and must override local defaults.
     for (const [key, value] of Object.entries(input.env ?? {}))
       args.push("--env", `${key}=${value}`);
-    if (input.envFile) args.push("--env-file", input.envFile);
     for (const dns of input.dns ?? []) args.push("--dns", dns);
     for (const search of input.dnsSearch ?? []) args.push("--dns-search", search);
     for (const port of input.publishedPorts ?? [])
       args.push("--publish", `${port.hostIp}:${port.hostPort}:${port.containerPort}`);
     args.push(input.image, ...(input.command ?? []));
     await this.execute(args);
-  }
-
-  async probeHttp(address: string, port: number, path: string): Promise<void> {
-    const hostname = address.includes(":") ? `[${address}]` : address;
-    const response = await fetch(`http://${hostname}:${port}${path}`);
-    if (!response.ok) throw new ConfigError(`HTTP health probe failed: ${response.status}`);
   }
 
   async resolveFrom(container: string, hostname: string, expectedAddress: string): Promise<void> {
@@ -188,7 +187,7 @@ export class AppleContainerCli implements AppleContainerAdapter {
   async probeFrom(container: string, hostname: string, port: number, path?: string): Promise<void> {
     const script = path
       ? `const response = await fetch(${JSON.stringify(`http://${hostname}:${port}${path}`)}); if (!response.ok) throw new Error(String(response.status));`
-      : `const socket = await Bun.connect({ hostname: ${JSON.stringify(hostname)}, port: ${port}}, socket: { open(socket) { socket.end(); } } }); socket.end();`;
+      : `const socket = await Bun.connect({ hostname: ${JSON.stringify(hostname)}, port: ${port}, socket: { open(socket) { socket.end(); }, data() {} } }); socket.end();`;
     await this.exec(container, ["bun", "-e", script]);
   }
 

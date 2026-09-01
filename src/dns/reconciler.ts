@@ -27,7 +27,9 @@ const labelsFor = (stack: StackConfig, id: string, role: string) => ({
 });
 
 function descriptor(service: StackService): string {
-  return createHash("sha256").update(JSON.stringify(service.runtime)).digest("hex").slice(0, 32);
+  const runtime =
+    service.role === "gateway" ? { ...service.runtime, barbackStateMount: true } : service.runtime;
+  return createHash("sha256").update(JSON.stringify(runtime)).digest("hex").slice(0, 32);
 }
 
 function assertSnapshot(
@@ -111,7 +113,7 @@ async function withdrawResolverBundle(directory: string): Promise<void> {
 async function managedEnvironment(service: StackService): Promise<Record<string, string>> {
   if (service.runtime.mode !== "managed") return {};
   const inline = service.runtime.env;
-  if (!service.runtime.envFile) return inline;
+  if (!service.runtime.envFile) return { ...inline };
   let contents: string;
   try {
     contents = await readFile(service.runtime.envFile, "utf8");
@@ -136,7 +138,7 @@ async function managedEnvironment(service: StackService): Promise<Record<string,
     if (!names.has(name) && !inline[name])
       throw new ConfigError(`Service environment is missing required ${name}`);
   }
-  return inline;
+  return { ...inline };
 }
 
 export class StackReconciler {
@@ -148,11 +150,46 @@ export class StackReconciler {
     readonly metrics?: Metrics,
   ) {}
 
+  async #probeService(service: StackService): Promise<void> {
+    if (service.health.type === "http") {
+      // Apple Container's private NAT addresses are not necessarily reachable from macOS.
+      // Probe HTTP liveness from the service's own network namespace instead.
+      await this.adapter.probeFrom(
+        service.container,
+        "127.0.0.1",
+        service.port,
+        service.health.path,
+      );
+      return;
+    }
+    await this.adapter.exec(service.container, service.health.command);
+  }
+
+  async #waitForService(service: StackService): Promise<void> {
+    let failure: unknown;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        await this.#probeService(service);
+        return;
+      } catch (error) {
+        failure = error;
+        await Bun.sleep(250);
+      }
+    }
+    throw failure;
+  }
+
   async #runManaged(id: string, service: StackService, resolver: ContainerSnapshot): Promise<void> {
     if (service.runtime.mode !== "managed") return;
     if (service.runtime.buildContext)
       await this.adapter.build(service.runtime.image, service.runtime.buildContext);
-    for (const mount of service.runtime.mounts) {
+    const mounts = [...service.runtime.mounts];
+    const environment = await managedEnvironment(service);
+    if (service.role === "gateway") {
+      mounts.push({ source: this.state.root, target: "/var/lib/barback-state", readOnly: true });
+      environment.BARBACK_STATE_DIR = "/var/lib/barback-state";
+    }
+    for (const mount of mounts) {
       await access(mount.source).catch(() => {
         throw new ConfigError(`Service ${id} mount source does not exist: ${mount.source}`);
       });
@@ -185,9 +222,9 @@ export class StackReconciler {
         "io.shiborgi.barback.resolver-generation": resolverGeneration,
       },
       command: service.runtime.command,
-      mounts: service.runtime.mounts,
+      mounts,
       envFile: service.runtime.envFile,
-      env: await managedEnvironment(service),
+      env: environment,
       dns: resolver.addresses,
       dnsSearch: [this.stack.dns.zone],
       publishedPorts: service.publishedPorts.map((port) => ({
@@ -196,6 +233,7 @@ export class StackReconciler {
         containerPort: port.containerPort,
       })),
     });
+    await this.#waitForService(service);
   }
 
   async up(): Promise<void> {
@@ -244,9 +282,20 @@ export class StackReconciler {
     // Dependencies must be resolvable before the gateway starts.
     for (const [id, service] of Object.entries(this.stack.services))
       if (service.role !== "gateway") await this.#runManaged(id, service, resolver);
-    await this.reconcile(new Date(), true);
     const gateway = this.stack.services.barback;
     if (!gateway) throw new ConfigError("Gateway is missing from the manifest");
+    const existingGateway = await this.adapter.inspect(gateway.container);
+    if (
+      existingGateway &&
+      (!existingGateway.running ||
+        (existingGateway.labels["io.shiborgi.barback.descriptor"] &&
+          existingGateway.labels["io.shiborgi.barback.descriptor"] !== descriptor(gateway)))
+    )
+      await this.adapter.remove(gateway.container);
+    await this.reconcile(new Date(), true);
+    // CoreDNS reloads the atomically replaced zone on a two-second interval.
+    // Do not start a DNS-dependent gateway against the previous bootstrap zone.
+    await Bun.sleep(2100);
     await this.#runManaged("barback", gateway, resolver);
     await this.reconcile();
   }
@@ -304,8 +353,10 @@ export class StackReconciler {
     );
     if (previous && previous.dnsGeneration !== dnsState.dnsGeneration) {
       this.metrics?.dnsGenerationChanges.inc();
-      for (const [id, service] of Object.entries(this.stack.services))
+      for (const [id, service] of Object.entries(this.stack.services)) {
+        if (allowGatewayMissing && service.role === "gateway") continue;
         await this.#runManaged(id, service, resolver);
+      }
     }
     const snapshots = await Promise.all(
       Object.entries(this.stack.services).map(async ([id, service]) => {
@@ -331,9 +382,7 @@ export class StackReconciler {
       const address = snapshot.addresses[0];
       if (!address) throw new ConfigError(`Service ${id} address is missing`);
       try {
-        if (service.health.type === "http")
-          await this.adapter.probeHttp(address, service.port, service.health.path);
-        else await this.adapter.exec(service.container, service.health.command);
+        await this.#probeService(service);
       } catch (error) {
         if (service.required) {
           throw new ConfigError(`Required service ${id} health probe failed: ${String(error)}`);
@@ -423,13 +472,7 @@ export class StackReconciler {
         let health: "healthy" | "unhealthy" | "absent" = "absent";
         if (snapshot) {
           try {
-            if (service.health.type === "http")
-              await this.adapter.probeHttp(
-                snapshot.addresses[0] ?? "",
-                service.port,
-                service.health.path,
-              );
-            else await this.adapter.exec(service.container, service.health.command);
+            await this.#probeService(service);
             health = "healthy";
           } catch {
             health = "unhealthy";

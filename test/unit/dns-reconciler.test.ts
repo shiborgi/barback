@@ -98,7 +98,7 @@ class FakeAdapter implements AppleContainerAdapter {
   runs: Array<Parameters<AppleContainerAdapter["run"]>[0]> = [];
   resolutions: Array<{ container: string; hostname: string; address: string }> = [];
   traffic: Array<{ container: string; hostname: string; port: number }> = [];
-  httpProbes: Array<{ address: string; port: number; path: string }> = [];
+  httpProbes: Array<{ container: string; address: string; port: number; path: string }> = [];
   constructor(readonly items: Map<string, ContainerSnapshot>) {}
   async ensureSystem() {}
   async ensureNetwork() {}
@@ -111,14 +111,15 @@ class FakeAdapter implements AppleContainerAdapter {
     const current = this.items.get(input.name);
     if (current) this.items.set(input.name, { ...current, labels: input.labels });
   }
-  async remove() {}
-  async probeHttp(address: string, port: number, path: string) {
-    this.httpProbes.push({ address, port, path });
-  }
+  async remove(_name: string) {}
   async resolveFrom(container: string, hostname: string, address: string) {
     this.resolutions.push({ container, hostname, address });
   }
-  async probeFrom(container: string, hostname: string, port: number) {
+  async probeFrom(container: string, hostname: string, port: number, path?: string) {
+    if (hostname === "127.0.0.1" && path) {
+      this.httpProbes.push({ container, address: hostname, port, path });
+      return;
+    }
     this.traffic.push({ container, hostname, port });
   }
   async exec() {}
@@ -212,6 +213,16 @@ describe("manifest reconciler", () => {
       expect(adapter.runs).toHaveLength(1);
       expect(adapter.runs[0]?.dns).toEqual(["192.0.2.2"]);
       expect(adapter.runs[0]?.dnsSearch).toEqual(["barback.internal"]);
+      expect(adapter.runs[0]?.env?.BARBACK_STATE_DIR).toBe("/var/lib/barback-state");
+      expect(adapter.runs[0]?.mounts).toContainEqual({
+        source: root,
+        target: "/var/lib/barback-state",
+        readOnly: true,
+      });
+      const gatewayRuntime = stack.services.barback?.runtime;
+      expect(gatewayRuntime?.mode).toBe("managed");
+      if (gatewayRuntime?.mode === "managed")
+        expect(gatewayRuntime.env).not.toHaveProperty("BARBACK_STATE_DIR");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -268,6 +279,53 @@ describe("manifest reconciler", () => {
     }
   });
 
+  test("does not start the gateway before publishing records after a resolver generation change", async () => {
+    const root = await mkdtemp(join(tmpdir(), "barback-reconciler-"));
+    try {
+      const labels = (service: string, role: string) => ({
+        "io.shiborgi.barback.stack": "barback-local",
+        "io.shiborgi.barback.service": service,
+        "io.shiborgi.barback.role": role,
+      });
+      const adapter = new FakeAdapter(
+        new Map([
+          [
+            "barback-dns",
+            snapshot("resolver-a", "192.0.2.2", {
+              ...labels("dns", "dns"),
+              "io.shiborgi.barback.resolver-instance": "resolver-a",
+            }),
+          ],
+          [
+            "barback-gateway",
+            snapshot("gateway", "192.0.2.3", labels("barback", "gateway"), [
+              { hostIp: "127.0.0.1", hostPort: 8080, containerPort: 8080 },
+            ]),
+          ],
+          ["barback-valkey", snapshot("valkey", "192.0.2.4", labels("valkey", "storage"))],
+        ]),
+      );
+      const reconciler = new StackReconciler(
+        stack,
+        {} as never,
+        adapter,
+        new DnsStateStore("barback-local", root),
+      );
+      await reconciler.reconcile(new Date("2026-08-30T12:00:00.000Z"));
+      adapter.items.set(
+        "barback-dns",
+        snapshot("resolver-a", "192.0.2.9", {
+          ...labels("dns", "dns"),
+          "io.shiborgi.barback.resolver-instance": "resolver-a",
+        }),
+      );
+      await reconciler.reconcile(new Date("2026-08-30T12:00:01.000Z"), true);
+      expect(adapter.runs).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("keeps the last valid bundle and lease when a required health probe fails", async () => {
     const root = await mkdtemp(join(tmpdir(), "barback-reconciler-"));
     try {
@@ -301,8 +359,9 @@ describe("manifest reconciler", () => {
         new DnsStateStore("barback-local", root),
       );
       await reconciler.reconcile(new Date("2026-08-30T12:00:00.000Z"));
-      adapter.probeHttp = async () => {
-        throw new Error("unhealthy");
+      adapter.probeFrom = async (container, hostname) => {
+        if (container === "barback-gateway" && hostname === "127.0.0.1")
+          throw new Error("unhealthy");
       };
       await expect(reconciler.reconcile(new Date("2026-08-30T12:00:01.000Z"))).rejects.toThrow(
         /health probe/,
@@ -362,6 +421,55 @@ describe("manifest reconciler", () => {
         hostname: "valkey.barback.internal",
         port: 6379,
       });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("removes a stopped gateway before publishing bootstrap records", async () => {
+    const root = await mkdtemp(join(tmpdir(), "barback-reconciler-"));
+    try {
+      const labels = (service: string, role: string) => ({
+        "io.shiborgi.barback.stack": "barback-local",
+        "io.shiborgi.barback.service": service,
+        "io.shiborgi.barback.role": role,
+      });
+      const adapter = new FakeAdapter(
+        new Map([
+          [
+            "barback-dns",
+            snapshot("resolver-a", "192.0.2.2", {
+              ...labels("dns", "dns"),
+              "io.shiborgi.barback.resolver-instance": "resolver-a",
+            }),
+          ],
+          [
+            "barback-gateway",
+            { ...snapshot("gateway", "192.0.2.3", labels("barback", "gateway")), running: false },
+          ],
+          ["barback-valkey", snapshot("valkey", "192.0.2.4", labels("valkey", "storage"))],
+        ]),
+      );
+      adapter.remove = async (name) => {
+        adapter.items.delete(name);
+      };
+      const run = adapter.run.bind(adapter);
+      adapter.run = async (input) => {
+        if (input.name === "barback-gateway")
+          adapter.items.set(
+            input.name,
+            snapshot("gateway-recreated", "192.0.2.3", input.labels, input.publishedPorts),
+          );
+        await run(input);
+      };
+      const reconciler = new StackReconciler(
+        stack,
+        {} as never,
+        adapter,
+        new DnsStateStore("barback-local", root),
+      );
+      await reconciler.up();
+      expect((await adapter.inspect("barback-gateway"))?.running).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -480,7 +588,8 @@ describe("manifest reconciler", () => {
         port: 6379,
       });
       expect(adapter.httpProbes).toContainEqual({
-        address: "192.0.2.50",
+        container: "google-mcp",
+        address: "127.0.0.1",
         port: 8090,
         path: "/health",
       });

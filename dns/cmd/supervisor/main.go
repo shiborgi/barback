@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -29,6 +30,7 @@ type supervisor struct {
 }
 
 var timestamp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$`)
+var addressHash = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 func parseLease(contents []byte) (lease, bool) {
 	var fields map[string]json.RawMessage
@@ -57,7 +59,7 @@ func parseValidUntil(value string) (time.Time, bool) {
 
 func (s *supervisor) accept(candidate lease, now time.Time) bool {
 	validUntil, ok := parseValidUntil(candidate.ValidUntil)
-	if !ok || candidate.SchemaVersion != 1 || candidate.StackID != s.stackID || candidate.DNSGeneration != s.generation || !validUntil.After(now) {
+	if !ok || candidate.SchemaVersion != 1 || candidate.StackID != s.stackID || !s.matchesGeneration(candidate.DNSGeneration) || !validUntil.After(now) {
 		return false
 	}
 	if s.lease != nil && candidate.Sequence < s.lease.Sequence {
@@ -67,6 +69,14 @@ func (s *supervisor) accept(candidate lease, now time.Time) bool {
 		s.lease = &candidate
 	}
 	return true
+}
+
+func (s *supervisor) matchesGeneration(generation string) bool {
+	if generation == s.generation {
+		return true // Bootstrap lease before the resolver's address is known.
+	}
+	suffix, ok := strings.CutPrefix(generation, s.generation+".")
+	return ok && addressHash.MatchString(suffix)
 }
 
 func (s *supervisor) active(now time.Time) bool {

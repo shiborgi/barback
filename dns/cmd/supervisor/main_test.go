@@ -22,3 +22,18 @@ func TestAcceptRequiresExactGeneration(t *testing.T) {
 		t.Fatal("rejected the exact active generation")
 	}
 }
+
+func TestAcceptAllowsAddressDerivedGenerationForResolverInstance(t *testing.T) {
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	s := supervisor{stackID: "barback-local", generation: "resolver-a"}
+	candidate := lease{
+		SchemaVersion: 1,
+		StackID:       "barback-local",
+		DNSGeneration: "resolver-a.0123456789abcdef",
+		Sequence:      1,
+		ValidUntil:    now.Add(time.Minute).Format(time.RFC3339Nano),
+	}
+	if !s.accept(candidate, now) {
+		t.Fatal("rejected the address-derived generation for this resolver instance")
+	}
+}

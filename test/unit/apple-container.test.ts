@@ -36,15 +36,18 @@ describe("AppleContainerCli", () => {
     ]);
   });
 
-  test("parses the Apple Container network hostAddress and passes env files", async () => {
+  test("parses Apple Container host addresses and passes env files", async () => {
     const calls: string[][] = [];
     const cli = new AppleContainerCli(async (args) => {
       calls.push(args);
       if (args[0] === "inspect")
-        return '[{"status":{"state":"running","networks":[{"ipv4Address":"192.0.2.2/24","hostAddress":"192.0.2.1"}]},"configuration":{"networks":[{"network":"barback"}]}}]';
+        return '[{"status":{"state":"running","networks":[{"ipv4Address":"192.0.2.2/24","hostAddress":"192.0.2.1"}]},"configuration":{"networks":[{"network":"barback"}],"publishedPorts":[{"hostAddress":"127.0.0.1","hostPort":8080,"containerPort":8080}]}}]';
       return "";
     });
     expect((await cli.inspect("resolver"))?.hostAddress).toBe("192.0.2.1");
+    expect((await cli.inspect("resolver"))?.publishedPorts).toEqual([
+      { hostIp: "127.0.0.1", hostPort: 8080, containerPort: 8080 },
+    ]);
     await cli.run({
       name: "test",
       image: "image",
@@ -53,5 +56,23 @@ describe("AppleContainerCli", () => {
       envFile: ".env",
     });
     expect(calls.at(-1)).toContain("--env-file");
+  });
+
+  test("probes TCP services from a container with valid Bun.connect syntax", async () => {
+    const calls: string[][] = [];
+    const cli = new AppleContainerCli(async (args) => {
+      calls.push(args);
+      return "";
+    });
+    await cli.probeFrom("gateway", "valkey.barback.internal", 6379);
+    expect(calls).toEqual([
+      [
+        "exec",
+        "gateway",
+        "bun",
+        "-e",
+        'const socket = await Bun.connect({ hostname: "valkey.barback.internal", port: 6379, socket: { open(socket) { socket.end(); }, data() {} } }); socket.end();',
+      ],
+    ]);
   });
 });
