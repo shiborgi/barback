@@ -2,9 +2,16 @@
   "schemaVersion": 1,
   "baseBranch": "main",
   "verification": {
-    "argv": ["bun", "--no-env-file", "run", "check"],
+    "argv": [
+      "bun",
+      "--no-env-file",
+      "run",
+      "check"
+    ],
     "timeoutMs": 180000,
-    "sharedPaths": ["node_modules"]
+    "sharedPaths": [
+      "node_modules"
+    ]
   },
   "maxReviewReturns": 3,
   "agentCatalog": {
@@ -56,79 +63,91 @@
     ],
     "timeoutMs": 60000,
     "profiles": {
-      "orientation": {
-        "facets": ["structure", "symbols", "relations"],
-        "maxOutputBytes": 9600
-      },
-      "implementation": {
-        "facets": ["symbols", "relations", "source", "tests"],
-        "maxOutputBytes": 14400
-      },
-      "impact": {
-        "facets": ["changes", "symbols", "relations", "tests"],
-        "maxOutputBytes": 14400
-      },
       "readiness": {
-        "facets": ["changes", "tests", "relations"],
+        "facets": [
+          "changes",
+          "tests",
+          "relations"
+        ],
         "maxOutputBytes": 9600
-      },
-      "orientation-wide": {
-        "facets": ["structure", "symbols", "relations"],
-        "maxOutputBytes": 19200
-      },
-      "orientation-grounded": {
-        "facets": ["structure", "symbols", "relations", "source"],
-        "maxOutputBytes": 19200
-      },
-      "implementation-deep": {
-        "facets": ["symbols", "relations", "source", "tests"],
-        "maxOutputBytes": 24000
-      },
-      "impact-wide": {
-        "facets": ["changes", "symbols", "relations", "tests"],
-        "maxOutputBytes": 24000
-      },
-      "impact-grounded": {
-        "facets": ["changes", "symbols", "relations", "source", "tests"],
-        "maxOutputBytes": 24000
       },
       "spec-survey": {
-        "facets": ["structure", "symbols"],
-        "maxOutputBytes": 12800
+        "facets": [
+          "structure",
+          "symbols",
+          "source"
+        ],
+        "maxOutputBytes": 12800,
+        "sourceDepth": "signatures"
       },
       "spec-deep": {
-        "facets": ["structure", "symbols", "relations"],
+        "facets": [
+          "structure",
+          "symbols",
+          "relations"
+        ],
         "maxOutputBytes": 19200
       },
       "plan-impact": {
-        "facets": ["changes", "symbols", "relations", "tests"],
+        "facets": [
+          "changes",
+          "symbols",
+          "relations",
+          "tests"
+        ],
         "maxOutputBytes": 19200
       },
       "plan-deep": {
-        "facets": ["changes", "symbols", "relations", "source", "tests"],
+        "facets": [
+          "changes",
+          "symbols",
+          "relations",
+          "source",
+          "tests"
+        ],
         "maxOutputBytes": 24000
       },
       "build-work": {
-        "facets": ["symbols", "source", "tests"],
+        "facets": [
+          "symbols",
+          "source",
+          "tests"
+        ],
         "maxOutputBytes": 19200
       },
       "build-deep": {
-        "facets": ["symbols", "relations", "source", "tests"],
+        "facets": [
+          "symbols",
+          "relations",
+          "source",
+          "tests"
+        ],
         "maxOutputBytes": 24000
       },
       "review-diff": {
-        "facets": ["changes", "symbols", "relations"],
+        "facets": [
+          "changes",
+          "symbols",
+          "relations",
+          "tests"
+        ],
         "maxOutputBytes": 12800
       },
       "review-grounded": {
-        "facets": ["changes", "symbols", "relations", "source", "tests"],
+        "facets": [
+          "changes",
+          "symbols",
+          "relations",
+          "source",
+          "tests"
+        ],
         "maxOutputBytes": 19200
       }
     },
     "defaults": {
       "spec": "spec-survey",
       "spec-review": "spec-deep",
-      "plan": "plan-impact",
+      "plan": "plan-deep",
       "plan-review": "review-diff",
       "build": "build-work",
       "build-review": "review-grounded",
